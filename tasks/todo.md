@@ -34,16 +34,16 @@
 **Description:** Build the Three.js procedural 3D wearable model synthesis for both Smart Band (capsule chassis + wrap-around strap) and Smart Watch (round/squircle case + bezel + crown + lugs + strap), implement dynamic 512x512 CanvasTexture watch face rendering with 4 faces (Minimal, Neon, Chrono, Health), implement 5 interactive simulated widgets (Heart Rate, Steps, Weather, Music, Battery), and provide 360-degree orbit rotation controls.
 
 **Acceptance criteria:**
-- [ ] `src/components/viewer3d/WatchGeometry.ts` generates Three.js procedural meshes for Band (capsule) and Watch (case, bezel, crown, lugs, straps) with real-time material/color updating.
-- [ ] `src/components/viewer3d/WatchFaceRenderer.ts` draws 4 distinct watch faces (Minimal, Neon, Chrono, Health) on offscreen canvas.
-- [ ] `src/components/widgets/` contains 5 interactive smart widgets: Heart Rate (ECG wave), Steps (10k progress ring), Weather, Music Player (playback controls & equalizer), and Battery (level & eco mode).
-- [ ] `src/components/viewer3d/WatchViewer3D.tsx` provides 360-degree orbit mouse/touch drag rotation, auto-rotate toggle, and lighting setup.
-- [ ] `src/components/viewer3d/StudioControls.tsx` provides color swatches, face picker, camera preset buttons, and widget drawer toggle.
-- [ ] `tests/simulator.test.ts` validates widget calculation bounds and watch face switching logic.
+- [x] `src/components/viewer3d/WatchGeometry.ts` generates Three.js procedural meshes for Band (capsule) and Watch (case, bezel, crown, lugs, straps) with real-time material/color updating.
+- [x] `src/components/viewer3d/WatchFaceRenderer.ts` draws 4 distinct watch faces (Minimal, Neon, Chrono, Health) on offscreen canvas.
+- [x] `src/components/widgets/` contains 5 interactive smart widgets: Heart Rate (ECG wave), Steps (10k progress ring), Weather, Music Player (playback controls & equalizer), and Battery (level & eco mode).
+- [x] `src/components/viewer3d/WatchViewer3D.tsx` provides 360-degree orbit mouse/touch drag rotation, auto-rotate toggle, and lighting setup.
+- [x] `src/components/viewer3d/StudioControls.tsx` provides color swatches, face picker, camera preset buttons, and widget drawer toggle.
+- [x] `tests/simulator.test.ts` validates widget calculation bounds and watch face switching logic.
 
 **Verification:**
-- [ ] Tests pass: `npm test tests/simulator.test.ts`
-- [ ] Build succeeds: `npm run build`
+- [x] Tests pass: `npm test tests/simulator.test.ts`
+- [x] Build succeeds: `npm run build`
 
 **Dependencies:** Task T1
 
@@ -66,9 +66,9 @@
 ---
 
 ## Checkpoint: Foundation & 3D Interactive Engine (After Tasks T1-T2)
-- [ ] Unit tests for products and simulator pass cleanly (`npm test`)
-- [ ] 3D Canvas renders without WebGL console errors
-- [ ] Procedural geometries and dynamic screen textures update interactively
+- [x] Unit tests for products and simulator pass cleanly (`npm test`)
+- [x] 3D Canvas renders without WebGL console errors
+- [x] Procedural geometries and dynamic screen textures update interactively
 
 ---
 
