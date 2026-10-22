@@ -1,0 +1,2683 @@
+# Review package: T4-artifact
+mode: worktree against base 53429e9e8ecac9fab62d00922be6762bfb646148
+artifact-hash: b9e3698a3f5a0da22321018e8d34ab766a090b7f
+files-changed: 10
+
+## Stat
+ index.html                            |  22 +
+ src/App.jsx                           | 214 ++++++++++
+ src/components/cart/CartDrawer.jsx    | 313 +++++++++++++++
+ src/components/cart/CartItemRow.jsx   | 133 +++++++
+ src/components/cart/CheckoutModal.jsx | 728 ++++++++++++++++++++++++++++++++++
+ src/components/common/Toast.jsx       | 143 +++++++
+ src/context/CartContext.jsx           | 388 ++++++++++++++++++
+ src/hooks/useCart.js                  |  18 +
+ src/main.jsx                          |  19 +
+ tests/cart.test.jsx                   | 626 +++++++++++++++++++++++++++++
+ 10 files changed, 2604 insertions(+)
+
+## Diff
+diff --git a/index.html b/index.html
+new file mode 100644
+index 0000000..b30e19d
+--- /dev/null
++++ b/index.html
+@@ -0,0 +1,22 @@
++<!DOCTYPE html>
++<html lang="en">
++  <head>
++    <meta charset="UTF-8" />
++    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
++    <title>NOVA WEARABLES | Interactive 3D Showcase & E-Commerce</title>
++    <meta
++      name="description"
++      content="Next-generation smart bands and watches featuring real-time 3D interactive customization, dynamic watch faces, and biometric simulation."
++    />
++    <link rel="preconnect" href="https://fonts.googleapis.com" />
++    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
++    <link
++      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
++      rel="stylesheet"
++    />
++  </head>
++  <body class="bg-[#F8F6FF] text-slate-900 min-h-screen">
++    <div id="root"></div>
++    <script type="module" src="/src/main.jsx"></script>
++  </body>
++</html>
+diff --git a/src/App.jsx b/src/App.jsx
+new file mode 100644
+index 0000000..93d730b
+--- /dev/null
++++ b/src/App.jsx
+@@ -0,0 +1,214 @@
++/**
++ * NOVA WEARABLES - Application Root Component
++ * Orchestrating Header, Hero 3D Showcase, Catalog Filtering, Detail 3D Modal, Cart Drawer, Checkout & Toasts
++ * Smart Watch & Band Interactive 3D Showcase & E-Commerce Prototype
++ */
++
++import React, { useState, useMemo } from 'react';
++import { Header } from './components/common/Header.jsx';
++import { Footer } from './components/common/Footer.jsx';
++import { HeroSection } from './components/hero/HeroSection.jsx';
++import { ProductFilter } from './components/catalog/ProductFilter.jsx';
++import { ProductGrid } from './components/catalog/ProductGrid.jsx';
++import { ProductDetailModal } from './components/catalog/ProductDetailModal.jsx';
++import { CartDrawer } from './components/cart/CartDrawer.jsx';
++import { CheckoutModal } from './components/cart/CheckoutModal.jsx';
++import { ToastProvider, useToast } from './components/common/Toast.jsx';
++import { CartProvider } from './context/CartContext.jsx';
++import { useCart } from './hooks/useCart.js';
++import { PRODUCTS } from './data/products.js';
++
++function AppContent() {
++  const {
++    totalCount,
++    addItem,
++    isCartOpen,
++    openCart,
++    closeCart,
++    isCheckoutOpen,
++    closeCheckout,
++  } = useCart();
++  const { success } = useToast();
++
++  // Catalog Filter & Search States
++  const [activeCategory, setActiveCategory] = useState('all');
++  const [activeTier, setActiveTier] = useState('all');
++  const [searchQuery, setSearchQuery] = useState('');
++  const [activeSort, setActiveSort] = useState('featured');
++
++  // Product Detail Modal State
++  const [selectedProduct, setSelectedProduct] = useState(null);
++  const [modalInitialColor, setModalInitialColor] = useState(null);
++  const [isModalOpen, setIsModalOpen] = useState(false);
++
++  // Filtered and Sorted Products
++  const filteredProducts = useMemo(() => {
++    let result = [...PRODUCTS];
++
++    // Filter by category
++    if (activeCategory !== 'all') {
++      result = result.filter((p) => p.category === activeCategory);
++    }
++
++    // Filter by tier
++    if (activeTier !== 'all') {
++      result = result.filter((p) => p.tier === activeTier);
++    }
++
++    // Filter by search query
++    if (searchQuery.trim()) {
++      const q = searchQuery.toLowerCase().trim();
++      result = result.filter(
++        (p) =>
++          p.name.toLowerCase().includes(q) ||
++          p.tagline.toLowerCase().includes(q) ||
++          p.description.toLowerCase().includes(q) ||
++          (p.features && p.features.some((f) => f.toLowerCase().includes(q))) ||
++          (p.specs?.casingMaterial && p.specs.casingMaterial.toLowerCase().includes(q))
++      );
++    }
++
++    // Sort products
++    switch (activeSort) {
++      case 'price-asc':
++        result.sort((a, b) => a.price - b.price);
++        break;
++      case 'price-desc':
++        result.sort((a, b) => b.price - a.price);
++        break;
++      case 'rating':
++        result.sort((a, b) => b.rating - a.rating);
++        break;
++      case 'featured':
++      default:
++        result.sort((a, b) => (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0));
++        break;
++    }
++
++    return result;
++  }, [activeCategory, activeTier, searchQuery, activeSort]);
++
++  const handleResetFilters = () => {
++    setActiveCategory('all');
++    setActiveTier('all');
++    setSearchQuery('');
++    setActiveSort('featured');
++  };
++
++  const handleCategorySelect = (catId) => {
++    setActiveCategory(catId);
++    if (catId === 'band' && activeTier === 'pro_max') {
++      setActiveTier('all');
++    }
++  };
++
++  const handleAddToCart = (product, color, face, quantity = 1) => {
++    const chosenColor = color || (product.colors && product.colors[0]);
++    const chosenFace = face || product.defaultWatchFace || 'minimal';
++    addItem(product, chosenColor, chosenFace, quantity);
++    success(
++      `Added ${quantity > 1 ? `${quantity}x ` : ''}${product.name} (${chosenColor?.name || 'Standard'}) to cart!`
++    );
++  };
++
++  const handleTryIn3D = (product, color) => {
++    setSelectedProduct(product);
++    setModalInitialColor(color || (product.colors && product.colors[0]));
++    setIsModalOpen(true);
++  };
++
++  const handleSelectProduct = (product) => {
++    setSelectedProduct(product);
++    setModalInitialColor(product.colors && product.colors[0]);
++    setIsModalOpen(true);
++  };
++
++  const handleCloseModal = () => {
++    setIsModalOpen(false);
++    setSelectedProduct(null);
++  };
++
++  return (
++    <div className="min-h-screen bg-[#F8F6FF] flex flex-col font-sans text-slate-900 antialiased selection:bg-purple-200 selection:text-purple-900">
++      {/* Global Header */}
++      <Header
++        activeCategory={activeCategory}
++        onSelectCategory={handleCategorySelect}
++        cartCount={totalCount}
++        onOpenCart={openCart}
++        searchQuery={searchQuery}
++        onSearchChange={setSearchQuery}
++      />
++
++      {/* Main Showcase & Catalog Area */}
++      <main className="flex-1">
++        {/* Hero Section with Interactive Procedural 3D Viewer */}
++        <HeroSection
++          onExploreClick={() => {
++            const el = document.getElementById('catalog');
++            if (el) el.scrollIntoView({ behavior: 'smooth' });
++          }}
++        />
++
++        {/* Product Catalog Section */}
++        <section
++          id="catalog"
++          className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-16 space-y-8"
++        >
++          {/* Segmented Filter Bar */}
++          <ProductFilter
++            activeCategory={activeCategory}
++            onCategoryChange={handleCategorySelect}
++            activeTier={activeTier}
++            onTierChange={setActiveTier}
++            searchQuery={searchQuery}
++            onSearchChange={setSearchQuery}
++            activeSort={activeSort}
++            onSortChange={setActiveSort}
++            totalCount={filteredProducts.length}
++            onResetFilters={handleResetFilters}
++          />
++
++          {/* Product Grid */}
++          <ProductGrid
++            products={filteredProducts}
++            onAddToCart={handleAddToCart}
++            onTryIn3D={handleTryIn3D}
++            onSelectProduct={handleSelectProduct}
++            onResetFilters={handleResetFilters}
++          />
++        </section>
++      </main>
++
++      {/* Footer */}
++      <Footer />
++
++      {/* Deep-Dive Product Detail Modal with 3D Viewer */}
++      <ProductDetailModal
++        isOpen={isModalOpen}
++        product={selectedProduct}
++        initialColor={modalInitialColor}
++        onClose={handleCloseModal}
++        onAddToCart={handleAddToCart}
++      />
++
++      {/* Slide-Over Cart Drawer */}
++      <CartDrawer isOpen={isCartOpen} onClose={closeCart} />
++
++      {/* Simulated 2-Step Checkout Modal */}
++      <CheckoutModal isOpen={isCheckoutOpen} onClose={closeCheckout} />
++    </div>
++  );
++}
++
++export function App() {
++  return (
++    <ToastProvider>
++      <CartProvider>
++        <AppContent />
++      </CartProvider>
++    </ToastProvider>
++  );
++}
++
++export default App;
+diff --git a/src/components/cart/CartDrawer.jsx b/src/components/cart/CartDrawer.jsx
+new file mode 100644
+index 0000000..2a85be6
+--- /dev/null
++++ b/src/components/cart/CartDrawer.jsx
+@@ -0,0 +1,313 @@
++/**
++ * Slide-Over Cart Drawer Component
++ * Itemized wearable list, coupon code engine with NOVA10 feedback, free shipping bar, and checkout action
++ * Smart Watch & Band Interactive 3D Showcase & E-Commerce Prototype
++ */
++
++import React, { useState, useEffect, useContext } from 'react';
++import {
++  ShoppingBag,
++  X,
++  ArrowRight,
++  Sparkles,
++  Tag,
++  Check,
++  AlertCircle,
++  Truck,
++  RotateCcw,
++  Trash2,
++} from 'lucide-react';
++import { CartContext, FREE_SHIPPING_THRESHOLD } from '../../context/CartContext.jsx';
++import { CartItemRow } from './CartItemRow.jsx';
++import { formatUSD } from '../../utils/formatters.js';
++
++export function CartDrawer(props) {
++  // Support both direct props and CartContext
++  const cartCtx = useContext(CartContext);
++
++  const isOpen = props.isOpen !== undefined ? props.isOpen : cartCtx?.isCartOpen || false;
++  const onClose = props.onClose || cartCtx?.closeCart || (() => {});
++  const onProceedToCheckout = props.onProceedToCheckout || cartCtx?.openCheckout || (() => {});
++
++  const items = props.items ?? cartCtx?.items ?? [];
++  const totalCount = props.totalCount ?? cartCtx?.totalCount ?? 0;
++  const subtotal = props.subtotal ?? cartCtx?.subtotal ?? 0;
++  const discountAmount = props.discountAmount ?? cartCtx?.discountAmount ?? 0;
++  const discountedSubtotal = props.discountedSubtotal ?? Math.max(0, subtotal - discountAmount);
++  const taxAmount = props.taxAmount ?? cartCtx?.taxAmount ?? 0;
++  const shippingAmount = props.shippingAmount ?? cartCtx?.shippingAmount ?? 0;
++  const grandTotal = props.grandTotal ?? cartCtx?.grandTotal ?? 0;
++
++  const appliedCoupon = props.appliedCoupon ?? cartCtx?.appliedCoupon ?? null;
++  const couponDiscountPercent = props.couponDiscountPercent ?? cartCtx?.couponDiscountPercent ?? 0;
++
++  const onUpdateQuantity = props.onUpdateQuantity || cartCtx?.updateQuantity || (() => {});
++  const onRemoveItem = props.onRemoveItem || cartCtx?.removeItem || (() => {});
++  const onApplyCoupon = props.onApplyCoupon || cartCtx?.applyCoupon || (() => {});
++  const onRemoveCoupon = props.onRemoveCoupon || cartCtx?.removeCoupon || (() => {});
++  const onClearCart = props.onClearCart || cartCtx?.clearCart || (() => {});
++
++  const [couponInput, setCouponInput] = useState('');
++  const [feedback, setFeedback] = useState(null);
++
++  // Close on Escape key
++  useEffect(() => {
++    if (!isOpen) return;
++    const handleKeyDown = (e) => {
++      if (e.key === 'Escape') onClose();
++    };
++    window.addEventListener('keydown', handleKeyDown);
++    return () => window.removeEventListener('keydown', handleKeyDown);
++  }, [isOpen, onClose]);
++
++  const handleApplyCoupon = (e) => {
++    e?.preventDefault();
++    if (!couponInput.trim()) return;
++
++    const result = onApplyCoupon(couponInput.trim());
++    if (result && typeof result === 'object') {
++      setFeedback(result);
++    } else {
++      // Fallback
++      if (couponInput.trim().toUpperCase() === 'NOVA10') {
++        setFeedback({ success: true, message: 'Coupon NOVA10 applied: 10% discount!' });
++      } else {
++        setFeedback({ success: false, message: 'Invalid promo code. Try "NOVA10" for 10% off.' });
++      }
++    }
++  };
++
++  const handleRemoveCoupon = () => {
++    onRemoveCoupon();
++    setCouponInput('');
++    setFeedback(null);
++  };
++
++  const remainingForFreeShipping = Math.max(0, FREE_SHIPPING_THRESHOLD - discountedSubtotal);
++  const shippingProgress = Math.min(100, Math.round((discountedSubtotal / FREE_SHIPPING_THRESHOLD) * 100));
++
++  if (!isOpen) return null;
++
++  return (
++    <div
++      role="dialog"
++      aria-modal="true"
++      aria-label="Shopping Cart Drawer"
++      className="fixed inset-0 z-50 overflow-hidden bg-slate-900/50 backdrop-blur-xs flex justify-end animate-in fade-in duration-200"
++      onClick={onClose}
++      data-testid="cart-drawer"
++    >
++      <div
++        onClick={(e) => e.stopPropagation()}
++        className="w-full max-w-md bg-white h-full shadow-2xl flex flex-col justify-between border-l border-purple-100 animate-in slide-in-from-right duration-300"
++      >
++        {/* Drawer Header */}
++        <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-white sticky top-0 z-10">
++          <div className="flex items-center gap-2.5">
++            <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center">
++              <ShoppingBag className="w-4 h-4" />
++            </div>
++            <div>
++              <h2 className="text-base sm:text-lg font-extrabold text-slate-900">Your Cart</h2>
++              <p className="text-[11px] text-slate-500 font-medium">
++                {totalCount} {totalCount === 1 ? 'item' : 'items'} in your bag
++              </p>
++            </div>
++          </div>
++
++          <div className="flex items-center gap-2">
++            {items.length > 0 && (
++              <button
++                type="button"
++                onClick={onClearCart}
++                className="text-[11px] text-slate-500 hover:text-rose-600 font-semibold px-2 py-1 rounded-lg hover:bg-rose-50 transition-colors"
++                title="Empty cart"
++              >
++                Clear Cart
++              </button>
++            )}
++            <button
++              type="button"
++              onClick={onClose}
++              aria-label="Close cart drawer"
++              className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-colors"
++            >
++              <X className="w-5 h-5" />
++            </button>
++          </div>
++        </div>
++
++        {/* Free Shipping Tracker */}
++        {items.length > 0 && (
++          <div className="px-5 py-3 bg-purple-50/60 border-b border-purple-100/70 space-y-1.5">
++            <div className="flex items-center justify-between text-xs">
++              <span className="flex items-center gap-1.5 font-bold text-purple-900">
++                <Truck className="w-3.5 h-3.5 text-purple-600" />
++                {remainingForFreeShipping === 0 ? (
++                  <span>🎉 You unlocked Free Standard Shipping!</span>
++                ) : (
++                  <span>
++                    Add <strong className="text-purple-700">{formatUSD(remainingForFreeShipping)}</strong> more for Free Shipping
++                  </span>
++                )}
++              </span>
++              <span className="text-[10px] font-bold text-purple-700">{shippingProgress}%</span>
++            </div>
++            <div className="w-full bg-purple-200/60 h-1.5 rounded-full overflow-hidden">
++              <div
++                className="bg-gradient-to-r from-purple-600 to-cyan-500 h-full rounded-full transition-all duration-500"
++                style={{ width: `${shippingProgress}%` }}
++              />
++            </div>
++          </div>
++        )}
++
++        {/* Cart Items List or Empty State */}
++        <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3">
++          {items.length === 0 ? (
++            <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-4">
++              <div className="w-16 h-16 rounded-3xl bg-purple-50 text-purple-600 flex items-center justify-center border border-purple-100 shadow-xs">
++                <ShoppingBag className="w-8 h-8" />
++              </div>
++              <div className="space-y-1">
++                <h3 className="text-base font-bold text-slate-900">Your cart is empty</h3>
++                <p className="text-xs text-slate-500 max-w-xs">
++                  Explore our procedural 3D wearable collection and find your perfect companion.
++                </p>
++              </div>
++              <button
++                type="button"
++                onClick={() => {
++                  onClose();
++                  const catalogEl = document.getElementById('catalog');
++                  if (catalogEl) catalogEl.scrollIntoView({ behavior: 'smooth' });
++                }}
++                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-xs font-bold shadow-md shadow-purple-500/20 transition-all"
++              >
++                <Sparkles className="w-3.5 h-3.5" />
++                <span>Explore Wearables</span>
++              </button>
++            </div>
++          ) : (
++            items.map((item) => (
++              <CartItemRow
++                key={item.id}
++                item={item}
++                onUpdateQuantity={onUpdateQuantity}
++                onRemove={onRemoveItem}
++              />
++            ))
++          )}
++        </div>
++
++        {/* Drawer Footer & Checkout Summary */}
++        {items.length > 0 && (
++          <div className="p-4 sm:p-5 border-t border-slate-100 bg-slate-50/50 space-y-4">
++            {/* Coupon Code Section */}
++            <div className="space-y-2">
++              {appliedCoupon ? (
++                <div className="flex items-center justify-between p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs">
++                  <div className="flex items-center gap-2">
++                    <Tag className="w-3.5 h-3.5 text-emerald-600" />
++                    <span className="font-bold text-emerald-800">
++                      {appliedCoupon} (-{couponDiscountPercent}%)
++                    </span>
++                  </div>
++                  <button
++                    type="button"
++                    onClick={handleRemoveCoupon}
++                    aria-label="Remove coupon"
++                    className="text-emerald-700 hover:text-emerald-900 text-xs font-bold p-1 hover:bg-emerald-100/70 rounded-md"
++                  >
++                    <X className="w-3.5 h-3.5" />
++                  </button>
++                </div>
++              ) : (
++                <form onSubmit={handleApplyCoupon} className="flex gap-2">
++                  <div className="relative flex-1">
++                    <input
++                      type="text"
++                      value={couponInput}
++                      onChange={(e) => setCouponInput(e.target.value)}
++                      placeholder="Promo code (e.g. NOVA10)"
++                      className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-hidden focus:border-purple-500"
++                    />
++                  </div>
++                  <button
++                    type="submit"
++                    className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-colors shrink-0"
++                  >
++                    Apply
++                  </button>
++                </form>
++              )}
++
++              {/* Feedback Alert */}
++              {feedback && (
++                <div
++                  className={`text-[11px] font-medium flex items-center gap-1.5 px-2.5 py-1 rounded-lg ${
++                    feedback.success
++                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
++                      : 'bg-rose-50 text-rose-700 border border-rose-200'
++                  }`}
++                >
++                  {feedback.success ? (
++                    <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
++                  ) : (
++                    <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
++                  )}
++                  <span>{feedback.message}</span>
++                </div>
++              )}
++            </div>
++
++            {/* Calculations Breakdown */}
++            <div className="space-y-1.5 text-xs text-slate-600 border-t border-slate-200/80 pt-3">
++              <div className="flex justify-between">
++                <span>Subtotal</span>
++                <span className="font-semibold text-slate-900">{formatUSD(subtotal)}</span>
++              </div>
++
++              {discountAmount > 0 && (
++                <div className="flex justify-between text-emerald-700 font-medium">
++                  <span className="flex items-center gap-1">
++                    <Tag className="w-3 h-3" />
++                    <span>Coupon Discount ({couponDiscountPercent}%)</span>
++                  </span>
++                  <span>-{formatUSD(discountAmount)}</span>
++                </div>
++              )}
++
++              <div className="flex justify-between">
++                <span>Estimated Tax (8%)</span>
++                <span>{formatUSD(taxAmount)}</span>
++              </div>
++
++              <div className="flex justify-between">
++                <span>Shipping</span>
++                <span>{shippingAmount === 0 ? 'FREE' : formatUSD(shippingAmount)}</span>
++              </div>
++
++              <div className="flex justify-between text-sm sm:text-base font-extrabold text-slate-900 pt-2 border-t border-slate-200">
++                <span>Total</span>
++                <span>{formatUSD(grandTotal)}</span>
++              </div>
++            </div>
++
++            {/* Checkout CTA Button */}
++            <button
++              type="button"
++              onClick={onProceedToCheckout}
++              className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-500 hover:from-purple-700 hover:to-cyan-600 text-white font-extrabold text-sm shadow-md shadow-purple-500/25 transition-all"
++            >
++              <span>Proceed to Checkout</span>
++              <ArrowRight className="w-4 h-4" />
++            </button>
++          </div>
++        )}
++      </div>
++    </div>
++  );
++}
++
++export default CartDrawer;
+diff --git a/src/components/cart/CartItemRow.jsx b/src/components/cart/CartItemRow.jsx
+new file mode 100644
+index 0000000..f00ccdf
+--- /dev/null
++++ b/src/components/cart/CartItemRow.jsx
+@@ -0,0 +1,133 @@
++/**
++ * Cart Item Row Component
++ * Itemized wearable entry with selected colorway swatch, watch face pill, quantity adjuster, and delete
++ * Smart Watch & Band Interactive 3D Showcase & E-Commerce Prototype
++ */
++
++import React from 'react';
++import { Plus, Minus, Trash2, Watch, Sparkles } from 'lucide-react';
++import { formatUSD } from '../../utils/formatters.js';
++import { Badge } from '../common/Badge.jsx';
++
++export function CartItemRow({
++  item,
++  onUpdateQuantity = () => {},
++  onRemove = () => {},
++  className = '',
++}) {
++  if (!item) return null;
++
++  const colorHex = item.color?.hex || item.color?.strapHex || '#1E293B';
++  const colorName = item.color?.name || 'Default';
++  const faceName = item.face || 'minimal';
++  const unitPrice = item.price || 0;
++  const lineTotal = item.lineTotal || unitPrice * (item.quantity || 1);
++
++  return (
++    <div
++      className={`flex items-center gap-3.5 sm:gap-4 p-3.5 sm:p-4 rounded-2xl bg-white border border-purple-100/80 shadow-xs hover:border-purple-200 transition-all ${className}`}
++      data-testid={`cart-item-${item.id}`}
++    >
++      {/* Visual Thumbnail */}
++      <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-gradient-to-tr from-purple-50 via-slate-50 to-cyan-50 border border-purple-100 flex items-center justify-center shrink-0 overflow-hidden">
++        {/* Watch silhouette representation */}
++        <div
++          className="w-10 h-10 sm:w-12 sm:h-12 rounded-full border-2 flex items-center justify-center shadow-xs"
++          style={{
++            borderColor: item.color?.chassisHex || colorHex,
++            backgroundColor: colorHex,
++          }}
++        >
++          <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-slate-950 flex items-center justify-center text-[8px] text-cyan-300 font-bold">
++            {faceName.slice(0, 3).toUpperCase()}
++          </div>
++        </div>
++
++        {/* Small color swatch indicator */}
++        <span
++          className="absolute bottom-1 right-1 w-3 h-3 rounded-full border border-white shadow-xs"
++          style={{ backgroundColor: colorHex }}
++          title={colorName}
++        />
++      </div>
++
++      {/* Item Metadata */}
++      <div className="flex-1 min-w-0 space-y-1">
++        <div className="flex items-center gap-1.5 flex-wrap">
++          {item.category && item.tier && (
++            <Badge category={item.category} tier={item.tier} size="sm" />
++          )}
++          <h4 className="text-xs sm:text-sm font-extrabold text-slate-900 truncate">
++            {item.name}
++          </h4>
++        </div>
++
++        {/* Customization Details: Color + Watch Face */}
++        <div className="flex items-center gap-2 text-[11px] text-slate-500 flex-wrap">
++          <span className="flex items-center gap-1">
++            <span
++              className="w-2.5 h-2.5 rounded-full inline-block border border-slate-300 shrink-0"
++              style={{ backgroundColor: colorHex }}
++            />
++            <span className="truncate max-w-[100px]">{colorName}</span>
++          </span>
++          <span className="text-slate-300">•</span>
++          <span className="inline-flex items-center gap-1 font-medium text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded-md text-[10px]">
++            <Watch className="w-2.5 h-2.5" />
++            <span className="capitalize">{faceName}</span>
++          </span>
++        </div>
++
++        {/* Unit Price & Line Total */}
++        <div className="flex items-center justify-between pt-1">
++          <span className="text-xs font-semibold text-slate-600">
++            {formatUSD(unitPrice)} <span className="text-[10px] text-slate-400">each</span>
++          </span>
++          <span className="text-xs sm:text-sm font-bold text-slate-900">
++            {formatUSD(lineTotal)}
++          </span>
++        </div>
++
++        {/* Quantity Controls and Remove */}
++        <div className="flex items-center justify-between pt-1">
++          <div className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50/80 p-0.5">
++            <button
++              type="button"
++              onClick={() => onUpdateQuantity(item.id, item.quantity - 1)}
++              aria-label="Decrease quantity"
++              className="w-6 h-6 flex items-center justify-center text-slate-600 hover:text-purple-600 hover:bg-white rounded transition-colors"
++            >
++              <Minus className="w-3 h-3" />
++            </button>
++            <span
++              className="w-7 text-center text-xs font-bold text-slate-800"
++              data-testid="item-quantity"
++            >
++              {item.quantity}
++            </span>
++            <button
++              type="button"
++              onClick={() => onUpdateQuantity(item.id, item.quantity + 1)}
++              aria-label="Increase quantity"
++              className="w-6 h-6 flex items-center justify-center text-slate-600 hover:text-purple-600 hover:bg-white rounded transition-colors"
++            >
++              <Plus className="w-3 h-3" />
++            </button>
++          </div>
++
++          <button
++            type="button"
++            onClick={() => onRemove(item.id)}
++            aria-label="Remove item"
++            title="Remove from cart"
++            className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition-colors"
++          >
++            <Trash2 className="w-3.5 h-3.5" />
++          </button>
++        </div>
++      </div>
++    </div>
++  );
++}
++
++export default CartItemRow;
+diff --git a/src/components/cart/CheckoutModal.jsx b/src/components/cart/CheckoutModal.jsx
+new file mode 100644
+index 0000000..37578ba
+--- /dev/null
++++ b/src/components/cart/CheckoutModal.jsx
+@@ -0,0 +1,728 @@
++/**
++ * Two-Step Simulated Checkout Modal Component
++ * Step 1: Shipping Address & Speed
++ * Step 2: Payment Simulation (Credit Card, One-Touch Pay, Cash on Delivery)
++ * Step 3: Order Confirmation Receipt & Reset Action
++ * Smart Watch & Band Interactive 3D Showcase & E-Commerce Prototype
++ */
++
++import React, { useState, useEffect, useContext } from 'react';
++import {
++  X,
++  CheckCircle2,
++  CreditCard,
++  Truck,
++  ShieldCheck,
++  ArrowRight,
++  ArrowLeft,
++  Lock,
++  Sparkles,
++  Smartphone,
++  Banknote,
++  Calendar,
++  Package,
++} from 'lucide-react';
++import { CartContext } from '../../context/CartContext.jsx';
++import { formatUSD, formatDate } from '../../utils/formatters.js';
++import { Badge } from '../common/Badge.jsx';
++
++export function CheckoutModal(props) {
++  const cartCtx = useContext(CartContext);
++
++  const isOpen = props.isOpen !== undefined ? props.isOpen : cartCtx?.isCheckoutOpen || false;
++  const onClose = props.onClose || cartCtx?.closeCheckout || (() => {});
++  const onClearCart = props.onClearCart || cartCtx?.clearCart || (() => {});
++
++  const items = props.items ?? cartCtx?.items ?? [];
++  const subtotal = props.subtotal ?? cartCtx?.subtotal ?? 0;
++  const discountAmount = props.discountAmount ?? cartCtx?.discountAmount ?? 0;
++  const baseShipping = props.shippingAmount ?? cartCtx?.shippingAmount ?? 0;
++  const taxAmount = props.taxAmount ?? cartCtx?.taxAmount ?? 0;
++  const grandTotal = props.grandTotal ?? cartCtx?.grandTotal ?? 0;
++
++  // Step state (supports controlled prop for testing or internal step state)
++  const [internalStep, setInternalStep] = useState(1);
++  const currentStep = props.step !== undefined ? props.step : internalStep;
++
++  // Shipping Form State
++  const [shippingForm, setShippingForm] = useState({
++    fullName: '',
++    email: '',
++    address: '',
++    city: '',
++    zip: '',
++    country: 'United States',
++    shippingSpeed: 'standard', // 'standard' | 'express'
++  });
++  const [shippingErrors, setShippingErrors] = useState({});
++
++  // Payment Form State
++  const [paymentMethod, setPaymentMethod] = useState('card'); // 'card' | 'one-touch' | 'cod'
++  const [cardForm, setCardForm] = useState({
++    cardName: '',
++    cardNumber: '•••• •••• •••• 4242',
++    expDate: '12/28',
++    cvv: '888',
++  });
++  const [isProcessing, setIsProcessing] = useState(false);
++
++  // Order Confirmation State
++  const [generatedOrderId, setGeneratedOrderId] = useState(
++    props.orderId || `NW-2026-${Math.floor(100000 + Math.random() * 900000)}`
++  );
++
++  // Sync prop orderId if passed
++  useEffect(() => {
++    if (props.orderId) {
++      setGeneratedOrderId(props.orderId);
++    }
++  }, [props.orderId]);
++
++  // Handle escape key
++  useEffect(() => {
++    if (!isOpen) return;
++    const handleKeyDown = (e) => {
++      if (e.key === 'Escape') {
++        if (currentStep === 3) {
++          handleFinishShopping();
++        } else {
++          onClose();
++        }
++      }
++    };
++    window.addEventListener('keydown', handleKeyDown);
++    return () => window.removeEventListener('keydown', handleKeyDown);
++  }, [isOpen, currentStep, onClose]);
++
++  // Validate Step 1
++  const validateShipping = () => {
++    const errors = {};
++    if (!shippingForm.fullName.trim()) errors.fullName = 'Full name is required';
++    if (!shippingForm.email.trim()) {
++      errors.email = 'Email address is required';
++    } else if (!/\S+@\S+\.\S+/.test(shippingForm.email)) {
++      errors.email = 'Valid email is required';
++    }
++    if (!shippingForm.address.trim()) errors.address = 'Street address is required';
++    if (!shippingForm.city.trim()) errors.city = 'City is required';
++    if (!shippingForm.zip.trim()) errors.zip = 'Postal code is required';
++
++    setShippingErrors(errors);
++    return Object.keys(errors).length === 0;
++  };
++
++  const handleProceedToPayment = (e) => {
++    e?.preventDefault();
++    if (validateShipping()) {
++      setInternalStep(2);
++    }
++  };
++
++  const handlePlaceOrder = () => {
++    setIsProcessing(true);
++    setTimeout(() => {
++      setIsProcessing(false);
++      const newOrderId = `NW-2026-${Math.floor(100000 + Math.random() * 900000)}`;
++      setGeneratedOrderId(newOrderId);
++      setInternalStep(3);
++    }, 600);
++  };
++
++  const handleFinishShopping = () => {
++    onClearCart();
++    setInternalStep(1);
++    setShippingForm({
++      fullName: '',
++      email: '',
++      address: '',
++      city: '',
++      zip: '',
++      country: 'United States',
++      shippingSpeed: 'standard',
++    });
++    onClose();
++  };
++
++  // Calculate estimated delivery
++  const estimatedDeliveryDate = new Date();
++  estimatedDeliveryDate.setDate(
++    estimatedDeliveryDate.getDate() + (shippingForm.shippingSpeed === 'express' ? 2 : 4)
++  );
++
++  if (!isOpen) return null;
++
++  return (
++    <div
++      role="dialog"
++      aria-modal="true"
++      aria-label="Simulated Checkout"
++      className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 md:p-6 animate-in fade-in duration-200"
++      onClick={currentStep === 3 ? handleFinishShopping : onClose}
++      data-testid="checkout-modal"
++    >
++      <div
++        onClick={(e) => e.stopPropagation()}
++        className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-purple-100/90 overflow-hidden my-auto animate-in zoom-in-95 duration-200"
++      >
++        {/* Modal Top Bar */}
++        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-white/95">
++          <div className="flex items-center gap-3">
++            <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center">
++              <Lock className="w-4 h-4" />
++            </div>
++            <div>
++              <h3 className="text-base font-extrabold text-slate-900">
++                {currentStep === 1 && 'Shipping Details'}
++                {currentStep === 2 && 'Simulated Payment'}
++                {currentStep === 3 && 'Order Confirmation'}
++              </h3>
++              <p className="text-[11px] text-slate-500 font-medium">
++                {currentStep === 1 && 'Step 1 of 2 • Where should we send your order?'}
++                {currentStep === 2 && 'Step 2 of 2 • Encrypted sandbox payment'}
++                {currentStep === 3 && 'Order Placed • Receipt & tracking info'}
++              </p>
++            </div>
++          </div>
++
++          <button
++            type="button"
++            onClick={currentStep === 3 ? handleFinishShopping : onClose}
++            aria-label="Close Checkout"
++            className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-colors"
++          >
++            <X className="w-5 h-5" />
++          </button>
++        </div>
++
++        {/* Wizard Step Progress Indicator (for Step 1 and 2) */}
++        {currentStep < 3 && (
++          <div className="px-6 py-3 bg-purple-50/40 border-b border-purple-100/60 flex items-center justify-between text-xs">
++            <div className="flex items-center gap-2 font-bold">
++              <span
++                className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${
++                  currentStep === 1
++                    ? 'bg-purple-600 text-white'
++                    : 'bg-emerald-500 text-white'
++                }`}
++              >
++                {currentStep > 1 ? <CheckCircle2 className="w-3.5 h-3.5" /> : '1'}
++              </span>
++              <span className={currentStep === 1 ? 'text-purple-900' : 'text-slate-600'}>
++                Shipping
++              </span>
++            </div>
++
++            <div className="w-16 h-0.5 bg-slate-200" />
++
++            <div className="flex items-center gap-2 font-bold">
++              <span
++                className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${
++                  currentStep === 2
++                    ? 'bg-purple-600 text-white'
++                    : 'bg-slate-200 text-slate-600'
++                }`}
++              >
++                2
++              </span>
++              <span className={currentStep === 2 ? 'text-purple-900' : 'text-slate-400'}>
++                Payment
++              </span>
++            </div>
++          </div>
++        )}
++
++        {/* Modal Body */}
++        <div className="p-6 max-h-[75vh] overflow-y-auto space-y-6">
++          {/* STEP 1: SHIPPING ADDRESS & SPEED */}
++          {currentStep === 1 && (
++            <form onSubmit={handleProceedToPayment} className="space-y-4">
++              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
++                <div className="space-y-1">
++                  <label className="text-xs font-bold text-slate-700">Full Name *</label>
++                  <input
++                    type="text"
++                    value={shippingForm.fullName}
++                    onChange={(e) =>
++                      setShippingForm({ ...shippingForm, fullName: e.target.value })
++                    }
++                    placeholder="e.g. Alex Morgan"
++                    className={`w-full text-xs px-3.5 py-2.5 rounded-xl border bg-white focus:outline-hidden ${
++                      shippingErrors.fullName
++                        ? 'border-rose-400 focus:border-rose-500'
++                        : 'border-slate-200 focus:border-purple-500'
++                    }`}
++                  />
++                  {shippingErrors.fullName && (
++                    <p className="text-[10px] font-semibold text-rose-500">
++                      {shippingErrors.fullName}
++                    </p>
++                  )}
++                </div>
++
++                <div className="space-y-1">
++                  <label className="text-xs font-bold text-slate-700">Email Address *</label>
++                  <input
++                    type="email"
++                    value={shippingForm.email}
++                    onChange={(e) =>
++                      setShippingForm({ ...shippingForm, email: e.target.value })
++                    }
++                    placeholder="alex.morgan@example.com"
++                    className={`w-full text-xs px-3.5 py-2.5 rounded-xl border bg-white focus:outline-hidden ${
++                      shippingErrors.email
++                        ? 'border-rose-400 focus:border-rose-500'
++                        : 'border-slate-200 focus:border-purple-500'
++                    }`}
++                  />
++                  {shippingErrors.email && (
++                    <p className="text-[10px] font-semibold text-rose-500">
++                      {shippingErrors.email}
++                    </p>
++                  )}
++                </div>
++              </div>
++
++              <div className="space-y-1">
++                <label className="text-xs font-bold text-slate-700">Shipping Address *</label>
++                <input
++                  type="text"
++                  value={shippingForm.address}
++                  onChange={(e) =>
++                    setShippingForm({ ...shippingForm, address: e.target.value })
++                  }
++                  placeholder="Street address, apartment or suite"
++                  className={`w-full text-xs px-3.5 py-2.5 rounded-xl border bg-white focus:outline-hidden ${
++                    shippingErrors.address
++                      ? 'border-rose-400 focus:border-rose-500'
++                      : 'border-slate-200 focus:border-purple-500'
++                  }`}
++                />
++                {shippingErrors.address && (
++                  <p className="text-[10px] font-semibold text-rose-500">
++                    {shippingErrors.address}
++                  </p>
++                )}
++              </div>
++
++              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
++                <div className="space-y-1">
++                  <label className="text-xs font-bold text-slate-700">City *</label>
++                  <input
++                    type="text"
++                    value={shippingForm.city}
++                    onChange={(e) =>
++                      setShippingForm({ ...shippingForm, city: e.target.value })
++                    }
++                    placeholder="San Francisco"
++                    className={`w-full text-xs px-3.5 py-2.5 rounded-xl border bg-white focus:outline-hidden ${
++                      shippingErrors.city
++                        ? 'border-rose-400 focus:border-rose-500'
++                        : 'border-slate-200 focus:border-purple-500'
++                    }`}
++                  />
++                  {shippingErrors.city && (
++                    <p className="text-[10px] font-semibold text-rose-500">
++                      {shippingErrors.city}
++                    </p>
++                  )}
++                </div>
++
++                <div className="space-y-1">
++                  <label className="text-xs font-bold text-slate-700">Postal / Zip *</label>
++                  <input
++                    type="text"
++                    value={shippingForm.zip}
++                    onChange={(e) =>
++                      setShippingForm({ ...shippingForm, zip: e.target.value })
++                    }
++                    placeholder="94103"
++                    className={`w-full text-xs px-3.5 py-2.5 rounded-xl border bg-white focus:outline-hidden ${
++                      shippingErrors.zip
++                        ? 'border-rose-400 focus:border-rose-500'
++                        : 'border-slate-200 focus:border-purple-500'
++                    }`}
++                  />
++                  {shippingErrors.zip && (
++                    <p className="text-[10px] font-semibold text-rose-500">
++                      {shippingErrors.zip}
++                    </p>
++                  )}
++                </div>
++
++                <div className="col-span-2 sm:col-span-1 space-y-1">
++                  <label className="text-xs font-bold text-slate-700">Country</label>
++                  <select
++                    value={shippingForm.country}
++                    onChange={(e) =>
++                      setShippingForm({ ...shippingForm, country: e.target.value })
++                    }
++                    className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 bg-white focus:outline-hidden focus:border-purple-500 text-slate-800"
++                  >
++                    <option value="United States">United States</option>
++                    <option value="Canada">Canada</option>
++                    <option value="United Kingdom">United Kingdom</option>
++                    <option value="Japan">Japan</option>
++                    <option value="Germany">Germany</option>
++                  </select>
++                </div>
++              </div>
++
++              {/* Shipping Speed Selection */}
++              <div className="pt-2 space-y-2">
++                <label className="text-xs font-bold text-slate-700">Shipping Method</label>
++                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
++                  <label
++                    className={`flex items-start gap-3 p-3 rounded-2xl border cursor-pointer transition-all ${
++                      shippingForm.shippingSpeed === 'standard'
++                        ? 'border-purple-500 bg-purple-50/40 ring-1 ring-purple-500'
++                        : 'border-slate-200 hover:border-purple-200 bg-white'
++                    }`}
++                  >
++                    <input
++                      type="radio"
++                      name="shippingSpeed"
++                      checked={shippingForm.shippingSpeed === 'standard'}
++                      onChange={() =>
++                        setShippingForm({ ...shippingForm, shippingSpeed: 'standard' })
++                      }
++                      className="mt-0.5 text-purple-600 focus:ring-purple-500"
++                    />
++                    <div className="text-xs space-y-0.5">
++                      <div className="font-bold text-slate-900 flex items-center justify-between">
++                        <span>Standard Dispatch</span>
++                        <span className="text-purple-700 font-extrabold">
++                          {baseShipping === 0 ? 'FREE' : formatUSD(baseShipping)}
++                        </span>
++                      </div>
++                      <p className="text-[11px] text-slate-500">
++                        Carbon-neutral delivery • 3-5 business days
++                      </p>
++                    </div>
++                  </label>
++
++                  <label
++                    className={`flex items-start gap-3 p-3 rounded-2xl border cursor-pointer transition-all ${
++                      shippingForm.shippingSpeed === 'express'
++                        ? 'border-purple-500 bg-purple-50/40 ring-1 ring-purple-500'
++                        : 'border-slate-200 hover:border-purple-200 bg-white'
++                    }`}
++                  >
++                    <input
++                      type="radio"
++                      name="shippingSpeed"
++                      checked={shippingForm.shippingSpeed === 'express'}
++                      onChange={() =>
++                        setShippingForm({ ...shippingForm, shippingSpeed: 'express' })
++                      }
++                      className="mt-0.5 text-purple-600 focus:ring-purple-500"
++                    />
++                    <div className="text-xs space-y-0.5">
++                      <div className="font-bold text-slate-900 flex items-center justify-between">
++                        <span>Priority Express</span>
++                        <span className="text-purple-700 font-extrabold">+$25.00</span>
++                      </div>
++                      <p className="text-[11px] text-slate-500">
++                        Next-flight expedited courier • 1-2 business days
++                      </p>
++                    </div>
++                  </label>
++                </div>
++              </div>
++
++              {/* Step 1 Actions */}
++              <div className="pt-4 flex items-center justify-between border-t border-slate-100">
++                <button
++                  type="button"
++                  onClick={onClose}
++                  className="px-4 py-2 text-xs font-semibold text-slate-500 hover:text-slate-800 transition-colors"
++                >
++                  Cancel
++                </button>
++                <button
++                  type="submit"
++                  className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-md shadow-purple-500/20 transition-all"
++                >
++                  <span>Continue to Payment</span>
++                  <ArrowRight className="w-4 h-4" />
++                </button>
++              </div>
++            </form>
++          )}
++
++          {/* STEP 2: PAYMENT SIMULATION */}
++          {currentStep === 2 && (
++            <div className="space-y-5">
++              {/* Payment Methods Tabs */}
++              <div className="space-y-2">
++                <label className="text-xs font-bold text-slate-700">Choose Payment Option</label>
++                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
++                  <button
++                    type="button"
++                    onClick={() => setPaymentMethod('card')}
++                    className={`flex flex-col items-center justify-center p-3 rounded-2xl border text-center transition-all ${
++                      paymentMethod === 'card'
++                        ? 'border-purple-600 bg-purple-50/50 ring-1 ring-purple-600 text-purple-900 font-bold'
++                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
++                    }`}
++                  >
++                    <CreditCard className="w-5 h-5 mb-1 text-purple-600" />
++                    <span className="text-xs">Credit Card</span>
++                  </button>
++
++                  <button
++                    type="button"
++                    onClick={() => setPaymentMethod('one-touch')}
++                    className={`flex flex-col items-center justify-center p-3 rounded-2xl border text-center transition-all ${
++                      paymentMethod === 'one-touch'
++                        ? 'border-purple-600 bg-purple-50/50 ring-1 ring-purple-600 text-purple-900 font-bold'
++                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
++                    }`}
++                  >
++                    <Smartphone className="w-5 h-5 mb-1 text-purple-600" />
++                    <span className="text-xs">Apple Pay / Google Pay</span>
++                  </button>
++
++                  <button
++                    type="button"
++                    onClick={() => setPaymentMethod('cod')}
++                    className={`flex flex-col items-center justify-center p-3 rounded-2xl border text-center transition-all ${
++                      paymentMethod === 'cod'
++                        ? 'border-purple-600 bg-purple-50/50 ring-1 ring-purple-600 text-purple-900 font-bold'
++                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
++                    }`}
++                  >
++                    <Banknote className="w-5 h-5 mb-1 text-purple-600" />
++                    <span className="text-xs">Cash on Delivery</span>
++                  </button>
++                </div>
++              </div>
++
++              {/* Payment Method Details */}
++              {paymentMethod === 'card' && (
++                <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/80 space-y-3">
++                  <div className="space-y-1">
++                    <label className="text-[11px] font-bold text-slate-600">Cardholder Name</label>
++                    <input
++                      type="text"
++                      value={cardForm.cardName || shippingForm.fullName || 'Alex Morgan'}
++                      onChange={(e) => setCardForm({ ...cardForm, cardName: e.target.value })}
++                      placeholder="Alex Morgan"
++                      className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white focus:outline-hidden focus:border-purple-500"
++                    />
++                  </div>
++
++                  <div className="space-y-1">
++                    <label className="text-[11px] font-bold text-slate-600">Card Number (Simulated)</label>
++                    <input
++                      type="text"
++                      value={cardForm.cardNumber}
++                      onChange={(e) => setCardForm({ ...cardForm, cardNumber: e.target.value })}
++                      className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white font-mono"
++                    />
++                  </div>
++
++                  <div className="grid grid-cols-2 gap-3">
++                    <div className="space-y-1">
++                      <label className="text-[11px] font-bold text-slate-600">Expiration</label>
++                      <input
++                        type="text"
++                        value={cardForm.expDate}
++                        onChange={(e) => setCardForm({ ...cardForm, expDate: e.target.value })}
++                        className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white font-mono"
++                      />
++                    </div>
++                    <div className="space-y-1">
++                      <label className="text-[11px] font-bold text-slate-600">CVV</label>
++                      <input
++                        type="text"
++                        value={cardForm.cvv}
++                        onChange={(e) => setCardForm({ ...cardForm, cvv: e.target.value })}
++                        className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white font-mono"
++                      />
++                    </div>
++                  </div>
++                </div>
++              )}
++
++              {paymentMethod === 'one-touch' && (
++                <div className="p-5 rounded-2xl bg-slate-900 text-white text-center space-y-3">
++                  <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center mx-auto text-cyan-300">
++                    <Smartphone className="w-6 h-6" />
++                  </div>
++                  <div className="space-y-1">
++                    <h4 className="text-sm font-bold">Biometric Fast Pay</h4>
++                    <p className="text-xs text-slate-400">
++                      Simulated one-touch payment authorized via Touch ID / Face ID.
++                    </p>
++                  </div>
++                </div>
++              )}
++
++              {paymentMethod === 'cod' && (
++                <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 space-y-1.5 text-xs">
++                  <div className="font-bold flex items-center gap-1.5">
++                    <Banknote className="w-4 h-4 text-amber-600" />
++                    <span>Pay On Arrival</span>
++                  </div>
++                  <p className="text-amber-800 text-[11px]">
++                    You can pay safely via contactless card or cash when the courier delivers your wearable package.
++                  </p>
++                </div>
++              )}
++
++              {/* Order Amount Recap */}
++              <div className="p-4 rounded-2xl bg-purple-50/50 border border-purple-100 flex items-center justify-between text-xs">
++                <div>
++                  <span className="text-slate-500 font-medium">Total Amount Due</span>
++                  <div className="text-base font-black text-slate-900">{formatUSD(grandTotal)}</div>
++                </div>
++                <div className="text-right text-[11px] text-slate-500">
++                  <span>Shipping to: {shippingForm.city || 'San Francisco'}, {shippingForm.zip || '94103'}</span>
++                </div>
++              </div>
++
++              {/* Step 2 Actions */}
++              <div className="pt-3 flex items-center justify-between border-t border-slate-100">
++                <button
++                  type="button"
++                  onClick={() => setInternalStep(1)}
++                  className="inline-flex items-center gap-1 px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors"
++                >
++                  <ArrowLeft className="w-3.5 h-3.5" />
++                  <span>Back to Shipping</span>
++                </button>
++
++                <button
++                  type="button"
++                  disabled={isProcessing}
++                  onClick={handlePlaceOrder}
++                  className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-500 hover:from-purple-700 hover:to-cyan-600 text-white text-xs font-bold shadow-md shadow-purple-500/25 transition-all disabled:opacity-50"
++                >
++                  {isProcessing ? (
++                    <span>Authorizing...</span>
++                  ) : (
++                    <>
++                      <span>Complete Order</span>
++                      <ShieldCheck className="w-4 h-4" />
++                    </>
++                  )}
++                </button>
++              </div>
++            </div>
++          )}
++
++          {/* STEP 3: ORDER CONFIRMATION & RECEIPT */}
++          {currentStep === 3 && (
++            <div className="space-y-6 text-center">
++              {/* Success Badge */}
++              <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-md shadow-emerald-500/20">
++                <CheckCircle2 className="w-9 h-9" />
++              </div>
++
++              <div className="space-y-1">
++                <h3 className="text-xl font-black text-slate-900 tracking-tight">
++                  Thank you for your order!
++                </h3>
++                <p className="text-xs text-slate-500 max-w-sm mx-auto">
++                  Your wearable order has been confirmed and scheduled for assembly in our procedural studio.
++                </p>
++              </div>
++
++              {/* Order Reference Box */}
++              <div className="p-4 rounded-2xl bg-purple-50/70 border border-purple-100 max-w-md mx-auto grid grid-cols-2 gap-3 text-left text-xs">
++                <div>
++                  <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
++                    Order ID
++                  </span>
++                  <div className="font-mono font-extrabold text-purple-700 text-sm">
++                    {generatedOrderId}
++                  </div>
++                </div>
++
++                <div>
++                  <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
++                    Estimated Delivery
++                  </span>
++                  <div className="font-bold text-slate-800 text-xs flex items-center gap-1 mt-0.5">
++                    <Calendar className="w-3.5 h-3.5 text-purple-600" />
++                    <span>{formatDate(estimatedDeliveryDate)}</span>
++                  </div>
++                </div>
++
++                <div className="col-span-2 border-t border-purple-100 pt-2 text-[11px] text-slate-600">
++                  <span className="font-semibold text-slate-800">Delivering to: </span>
++                  <span>{shippingForm.fullName || 'Alex Morgan'}</span> • <span>{shippingForm.address || 'Market St, San Francisco'}</span>
++                </div>
++              </div>
++
++              {/* Itemized Order Receipt */}
++              <div className="text-left space-y-3 pt-2">
++                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
++                  Order Summary
++                </h4>
++                <div className="divide-y divide-slate-100 border border-slate-100 rounded-2xl p-3 bg-white space-y-2">
++                  {items.map((item) => (
++                    <div key={item.id} className="pt-2 first:pt-0 flex items-center justify-between text-xs">
++                      <div>
++                        <span className="font-bold text-slate-900">{item.name}</span>
++                        <div className="text-[10px] text-slate-500 flex items-center gap-1">
++                          <span>{item.color?.name || 'Color'}</span>
++                          <span>•</span>
++                          <span className="capitalize">{item.face || 'Face'}</span>
++                          <span>•</span>
++                          <span>Qty: {item.quantity}</span>
++                        </div>
++                      </div>
++                      <span className="font-semibold text-slate-900">
++                        {formatUSD((item.price || 0) * (item.quantity || 1))}
++                      </span>
++                    </div>
++                  ))}
++
++                  <div className="pt-3 space-y-1 text-xs text-slate-600">
++                    <div className="flex justify-between">
++                      <span>Subtotal</span>
++                      <span>{formatUSD(subtotal)}</span>
++                    </div>
++                    {discountAmount > 0 && (
++                      <div className="flex justify-between text-emerald-700 font-semibold">
++                        <span>Discount</span>
++                        <span>-{formatUSD(discountAmount)}</span>
++                      </div>
++                    )}
++                    <div className="flex justify-between">
++                      <span>Shipping</span>
++                      <span>{baseShipping === 0 ? 'FREE' : formatUSD(baseShipping)}</span>
++                    </div>
++                    <div className="flex justify-between">
++                      <span>Estimated Tax</span>
++                      <span>{formatUSD(taxAmount)}</span>
++                    </div>
++                    <div className="flex justify-between text-sm font-extrabold text-slate-900 pt-2 border-t border-slate-100">
++                      <span>Total Paid</span>
++                      <span>{formatUSD(grandTotal)}</span>
++                    </div>
++                  </div>
++                </div>
++              </div>
++
++              {/* Reset CTA */}
++              <div className="pt-2">
++                <button
++                  type="button"
++                  onClick={handleFinishShopping}
++                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-3 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-md shadow-purple-500/20 transition-all"
++                >
++                  <Sparkles className="w-4 h-4" />
++                  <span>Continue Shopping</span>
++                </button>
++              </div>
++            </div>
++          )}
++        </div>
++      </div>
++    </div>
++  );
++}
++
++export default CheckoutModal;
+diff --git a/src/components/common/Toast.jsx b/src/components/common/Toast.jsx
+new file mode 100644
+index 0000000..69c3337
+--- /dev/null
++++ b/src/components/common/Toast.jsx
+@@ -0,0 +1,143 @@
++/**
++ * Non-Blocking Toast Notification Alert System
++ * Smart Watch & Band Interactive 3D Showcase & E-Commerce Prototype
++ */
++
++import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
++import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
++
++export const ToastContext = createContext(null);
++
++export function useToast() {
++  const context = useContext(ToastContext);
++  if (!context) {
++    // Return fallback no-op if used outside provider to prevent crashes
++    return {
++      addToast: () => {},
++      removeToast: () => {},
++      success: () => {},
++      info: () => {},
++      error: () => {},
++      toasts: [],
++    };
++  }
++  return context;
++}
++
++export function Toast({
++  id,
++  message,
++  type = 'info',
++  onDismiss = () => {},
++  duration = 3500,
++}) {
++  useEffect(() => {
++    if (!duration) return;
++    const timer = setTimeout(() => {
++      onDismiss(id);
++    }, duration);
++    return () => clearTimeout(timer);
++  }, [id, duration, onDismiss]);
++
++  const typeStyles = {
++    success: 'bg-white border-emerald-200 text-slate-800 shadow-emerald-500/10',
++    info: 'bg-white border-purple-200 text-slate-800 shadow-purple-500/10',
++    error: 'bg-white border-rose-200 text-slate-800 shadow-rose-500/10',
++  };
++
++  const iconMap = {
++    success: <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />,
++    info: <Info className="w-5 h-5 text-purple-600 shrink-0" />,
++    error: <AlertCircle className="w-5 h-5 text-rose-500 shrink-0" />,
++  };
++
++  return (
++    <div
++      role="alert"
++      className={`pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-2xl border shadow-lg backdrop-blur-md transition-all duration-300 animate-in slide-in-from-bottom-3 ${
++        typeStyles[type] || typeStyles.info
++      }`}
++      data-testid={`toast-${id || 'notification'}`}
++    >
++      {iconMap[type] || iconMap.info}
++      <div className="text-xs sm:text-sm font-semibold leading-tight text-slate-800">
++        {message}
++      </div>
++      <button
++        type="button"
++        onClick={() => onDismiss(id)}
++        aria-label="Dismiss Notification"
++        className="text-slate-400 hover:text-slate-600 p-1 rounded-lg transition-colors ml-auto"
++      >
++        <X className="w-3.5 h-3.5" />
++      </button>
++    </div>
++  );
++}
++
++export function ToastContainer({ toasts = [], onDismiss = () => {} }) {
++  if (!toasts || toasts.length === 0) return null;
++
++  return (
++    <div
++      className="fixed bottom-6 right-6 z-50 flex flex-col gap-2.5 max-w-sm w-full pointer-events-none px-4 sm:px-0"
++      data-testid="toast-container"
++    >
++      {toasts.map((toast) => (
++        <Toast
++          key={toast.id}
++          id={toast.id}
++          message={toast.message}
++          type={toast.type}
++          duration={toast.duration}
++          onDismiss={onDismiss}
++        />
++      ))}
++    </div>
++  );
++}
++
++export function ToastProvider({ children }) {
++  const [toasts, setToasts] = useState([]);
++
++  const removeToast = useCallback((id) => {
++    setToasts((prev) => prev.filter((t) => t.id !== id));
++  }, []);
++
++  const addToast = useCallback((message, type = 'info', duration = 3500) => {
++    const id = `toast-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
++    setToasts((prev) => [...prev, { id, message, type, duration }]);
++    return id;
++  }, []);
++
++  const success = useCallback(
++    (msg, duration) => addToast(msg, 'success', duration),
++    [addToast]
++  );
++  const info = useCallback(
++    (msg, duration) => addToast(msg, 'info', duration),
++    [addToast]
++  );
++  const error = useCallback(
++    (msg, duration) => addToast(msg, 'error', duration),
++    [addToast]
++  );
++
++  return (
++    <ToastContext.Provider
++      value={{
++        toasts,
++        addToast,
++        removeToast,
++        success,
++        info,
++        error,
++      }}
++    >
++      {children}
++      <ToastContainer toasts={toasts} onDismiss={removeToast} />
++    </ToastContext.Provider>
++  );
++}
++
++export default Toast;
+diff --git a/src/context/CartContext.jsx b/src/context/CartContext.jsx
+new file mode 100644
+index 0000000..d8d3488
+--- /dev/null
++++ b/src/context/CartContext.jsx
+@@ -0,0 +1,388 @@
++/**
++ * Global Cart State Management & LocalStorage Persistence Context
++ * Smart Watch & Band Interactive 3D Showcase & E-Commerce Prototype
++ */
++
++import React, { createContext, useReducer, useEffect, useMemo, useState } from 'react';
++
++export const STORAGE_KEY = 'novawear_cart_v1';
++export const FREE_SHIPPING_THRESHOLD = 150;
++export const STANDARD_SHIPPING_FEE = 15;
++export const TAX_RATE = 0.08;
++
++export const VALID_COUPONS = {
++  NOVA10: {
++    code: 'NOVA10',
++    discountPercent: 10,
++    description: '10% discount on all items',
++  },
++  NOVA20: {
++    code: 'NOVA20',
++    discountPercent: 20,
++    description: '20% VIP discount on all items',
++  },
++};
++
++/**
++ * Calculates cart totals including subtotal, discount, tax, and shipping.
++ */
++export function calculateCartTotals(items = [], discountPercent = 0) {
++  const totalCount = items.reduce((acc, item) => acc + (item.quantity || 1), 0);
++  const rawSubtotal = items.reduce(
++    (acc, item) => acc + (item.price || 0) * (item.quantity || 1),
++    0
++  );
++  const subtotal = Math.round(rawSubtotal * 100) / 100;
++
++  const validPercent = typeof discountPercent === 'number' && discountPercent > 0 ? discountPercent : 0;
++  const rawDiscount = subtotal * (validPercent / 100);
++  const discountAmount = Math.round(rawDiscount * 100) / 100;
++  const discountedSubtotal = Math.max(0, Math.round((subtotal - discountAmount) * 100) / 100);
++
++  const shippingAmount =
++    subtotal === 0 ? 0 : discountedSubtotal >= FREE_SHIPPING_THRESHOLD ? 0 : STANDARD_SHIPPING_FEE;
++
++  const rawTax = discountedSubtotal * TAX_RATE;
++  const taxAmount = Math.round(rawTax * 100) / 100;
++
++  const grandTotal = Math.round((discountedSubtotal + shippingAmount + taxAmount) * 100) / 100;
++
++  return {
++    totalCount,
++    subtotal,
++    discountAmount,
++    discountedSubtotal,
++    shippingAmount,
++    taxAmount,
++    grandTotal,
++    freeShippingThreshold: FREE_SHIPPING_THRESHOLD,
++  };
++}
++
++export const initialCartState = {
++  items: [],
++  appliedCoupon: null,
++  couponDiscountPercent: 0,
++  couponMessage: '',
++  couponError: null,
++};
++
++/**
++ * Cart State Reducer
++ */
++export function cartReducer(state, action) {
++  switch (action.type) {
++    case 'REHYDRATE': {
++      const payload = action.payload || {};
++      const rehydratedItems = Array.isArray(payload.items) ? payload.items : [];
++      const coupon = payload.appliedCoupon && VALID_COUPONS[payload.appliedCoupon]
++        ? VALID_COUPONS[payload.appliedCoupon]
++        : null;
++
++      return {
++        ...state,
++        items: rehydratedItems,
++        appliedCoupon: coupon ? coupon.code : null,
++        couponDiscountPercent: coupon ? coupon.discountPercent : 0,
++        couponMessage: coupon ? `Coupon ${coupon.code} active` : '',
++        couponError: null,
++      };
++    }
++
++    case 'ADD_ITEM': {
++      const { product, color, face, quantity = 1 } = action.payload;
++      if (!product) return state;
++
++      const selectedColor =
++        color || (product.colors && product.colors[0]) || {
++          id: 'default',
++          name: 'Standard',
++          hex: '#1E293B',
++          chassisHex: '#0F172A',
++          strapHex: '#1E293B',
++        };
++
++      const selectedFace =
++        typeof face === 'string' ? face : product.defaultWatchFace || 'minimal';
++
++      const itemId = `${product.id}-${selectedColor.id}-${selectedFace}`;
++      const qtyToAdd = Math.max(1, parseInt(quantity, 10) || 1);
++
++      const existingIndex = state.items.findIndex((item) => item.id === itemId);
++
++      let updatedItems;
++      if (existingIndex >= 0) {
++        updatedItems = state.items.map((item, idx) => {
++          if (idx === existingIndex) {
++            const newQty = item.quantity + qtyToAdd;
++            return {
++              ...item,
++              quantity: newQty,
++              lineTotal: Math.round(item.price * newQty * 100) / 100,
++            };
++          }
++          return item;
++        });
++      } else {
++        const newItem = {
++          id: itemId,
++          productId: product.id,
++          product,
++          name: product.name,
++          category: product.category,
++          tier: product.tier,
++          price: product.price,
++          originalPrice: product.originalPrice,
++          color: selectedColor,
++          face: selectedFace,
++          quantity: qtyToAdd,
++          lineTotal: Math.round(product.price * qtyToAdd * 100) / 100,
++        };
++        updatedItems = [...state.items, newItem];
++      }
++
++      return {
++        ...state,
++        items: updatedItems,
++      };
++    }
++
++    case 'UPDATE_QUANTITY': {
++      const { itemId, quantity } = action.payload;
++      const targetQty = parseInt(quantity, 10);
++
++      if (targetQty <= 0) {
++        return {
++          ...state,
++          items: state.items.filter((item) => item.id !== itemId),
++        };
++      }
++
++      return {
++        ...state,
++        items: state.items.map((item) => {
++          if (item.id === itemId) {
++            return {
++              ...item,
++              quantity: targetQty,
++              lineTotal: Math.round(item.price * targetQty * 100) / 100,
++            };
++          }
++          return item;
++        }),
++      };
++    }
++
++    case 'REMOVE_ITEM': {
++      const { itemId } = action.payload;
++      return {
++        ...state,
++        items: state.items.filter((item) => item.id !== itemId),
++      };
++    }
++
++    case 'APPLY_COUPON': {
++      const rawCode = (action.payload?.code || '').trim().toUpperCase();
++      const matched = VALID_COUPONS[rawCode];
++
++      if (matched) {
++        return {
++          ...state,
++          appliedCoupon: matched.code,
++          couponDiscountPercent: matched.discountPercent,
++          couponMessage: `Coupon ${matched.code} applied: ${matched.discountPercent}% discount!`,
++          couponError: null,
++        };
++      }
++
++      return {
++        ...state,
++        couponError: `Invalid promo code "${action.payload?.code || ''}". Try "NOVA10" for 10% off.`,
++      };
++    }
++
++    case 'REMOVE_COUPON': {
++      return {
++        ...state,
++        appliedCoupon: null,
++        couponDiscountPercent: 0,
++        couponMessage: '',
++        couponError: null,
++      };
++    }
++
++    case 'CLEAR_CART': {
++      return {
++        ...state,
++        items: [],
++        appliedCoupon: null,
++        couponDiscountPercent: 0,
++        couponMessage: '',
++        couponError: null,
++      };
++    }
++
++    default:
++      return state;
++  }
++}
++
++export const CartContext = createContext(null);
++
++export function CartProvider({ children }) {
++  // Read initial state from localStorage if available
++  const [state, dispatch] = useReducer(cartReducer, initialCartState, (defaultInitial) => {
++    try {
++      if (typeof window !== 'undefined' && window.localStorage) {
++        const stored = window.localStorage.getItem(STORAGE_KEY);
++        if (stored) {
++          const parsed = JSON.parse(stored);
++          const coupon = parsed.appliedCoupon && VALID_COUPONS[parsed.appliedCoupon]
++            ? VALID_COUPONS[parsed.appliedCoupon]
++            : null;
++          return {
++            ...defaultInitial,
++            items: Array.isArray(parsed.items) ? parsed.items : [],
++            appliedCoupon: coupon ? coupon.code : null,
++            couponDiscountPercent: coupon ? coupon.discountPercent : 0,
++            couponMessage: coupon ? `Coupon ${coupon.code} active` : '',
++          };
++        }
++      }
++    } catch (e) {
++      console.warn('Failed to rehydrate cart from localStorage:', e);
++    }
++    return defaultInitial;
++  });
++
++  const [isCartOpen, setIsCartOpen] = useState(false);
++  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
++
++  // Sync state mutations to localStorage
++  useEffect(() => {
++    try {
++      if (typeof window !== 'undefined' && window.localStorage) {
++        const serialized = JSON.stringify({
++          items: state.items,
++          appliedCoupon: state.appliedCoupon,
++          couponDiscountPercent: state.couponDiscountPercent,
++        });
++        window.localStorage.setItem(STORAGE_KEY, serialized);
++      }
++    } catch (e) {
++      console.warn('Failed to serialize cart to localStorage:', e);
++    }
++  }, [state.items, state.appliedCoupon, state.couponDiscountPercent]);
++
++  // Derived calculations
++  const totals = useMemo(() => {
++    return calculateCartTotals(state.items, state.couponDiscountPercent);
++  }, [state.items, state.couponDiscountPercent]);
++
++  // Action dispatches
++  const addItem = (product, color, face, quantity = 1) => {
++    dispatch({
++      type: 'ADD_ITEM',
++      payload: { product, color, face, quantity },
++    });
++  };
++
++  const removeItem = (itemId) => {
++    dispatch({
++      type: 'REMOVE_ITEM',
++      payload: { itemId },
++    });
++  };
++
++  const updateQuantity = (itemId, quantity) => {
++    dispatch({
++      type: 'UPDATE_QUANTITY',
++      payload: { itemId, quantity },
++    });
++  };
++
++  const applyCoupon = (code) => {
++    const rawCode = (code || '').trim().toUpperCase();
++    const matched = VALID_COUPONS[rawCode];
++
++    dispatch({
++      type: 'APPLY_COUPON',
++      payload: { code },
++    });
++
++    if (matched) {
++      return {
++        success: true,
++        message: `Coupon ${matched.code} applied: ${matched.discountPercent}% discount!`,
++      };
++    }
++    return {
++      success: false,
++      message: `Invalid promo code "${code}". Try "NOVA10" for 10% off.`,
++    };
++  };
++
++  const removeCoupon = () => {
++    dispatch({ type: 'REMOVE_COUPON' });
++  };
++
++  const clearCart = () => {
++    dispatch({ type: 'CLEAR_CART' });
++  };
++
++  const openCart = () => setIsCartOpen(true);
++  const closeCart = () => setIsCartOpen(false);
++
++  const openCheckout = () => {
++    setIsCartOpen(false);
++    setIsCheckoutOpen(true);
++  };
++  const closeCheckout = () => setIsCheckoutOpen(false);
++
++  const contextValue = {
++    // State & derived totals
++    items: state.items,
++    appliedCoupon: state.appliedCoupon,
++    couponDiscountPercent: state.couponDiscountPercent,
++    couponMessage: state.couponMessage,
++    couponError: state.couponError,
++    totalCount: totals.totalCount,
++    subtotal: totals.subtotal,
++    discountAmount: totals.discountAmount,
++    discountedSubtotal: totals.discountedSubtotal,
++    shippingAmount: totals.shippingAmount,
++    taxAmount: totals.taxAmount,
++    grandTotal: totals.grandTotal,
++    freeShippingThreshold: totals.freeShippingThreshold,
++
++    // Actions
++    addItem,
++    removeItem,
++    updateQuantity,
++    applyCoupon,
++    removeCoupon,
++    clearCart,
++
++    // UI Drawer & Modal State
++    isCartOpen,
++    setIsCartOpen,
++    openCart,
++    closeCart,
++    isCheckoutOpen,
++    setIsCheckoutOpen,
++    openCheckout,
++    closeCheckout,
++  };
++
++  return <CartContext.Provider value={contextValue}>{children}</CartContext.Provider>;
++}
++
++export function useCart() {
++  const context = React.useContext(CartContext);
++  if (!context) {
++    throw new Error('useCart must be used within a CartProvider');
++  }
++  return context;
++}
++
++export default CartContext;
+diff --git a/src/hooks/useCart.js b/src/hooks/useCart.js
+new file mode 100644
+index 0000000..3fd3f9c
+--- /dev/null
++++ b/src/hooks/useCart.js
+@@ -0,0 +1,18 @@
++/**
++ * useCart Hook
++ * Consumes CartContext for seamless cart operations and state access
++ * Smart Watch & Band Interactive 3D Showcase & E-Commerce Prototype
++ */
++
++import { useContext } from 'react';
++import { CartContext } from '../context/CartContext.jsx';
++
++export function useCart() {
++  const context = useContext(CartContext);
++  if (!context) {
++    throw new Error('useCart must be used within a CartProvider');
++  }
++  return context;
++}
++
++export default useCart;
+diff --git a/src/main.jsx b/src/main.jsx
+new file mode 100644
+index 0000000..f4cd32c
+--- /dev/null
++++ b/src/main.jsx
+@@ -0,0 +1,19 @@
++/**
++ * Application Entry Point - React 19 Bootstrap
++ * Smart Watch & Band Interactive 3D Showcase & E-Commerce Prototype
++ */
++
++import React from 'react';
++import ReactDOM from 'react-dom/client';
++import App from './App.jsx';
++import './index.css';
++
++const rootElement = document.getElementById('root');
++
++if (rootElement) {
++  ReactDOM.createRoot(rootElement).render(
++    <React.StrictMode>
++      <App />
++    </React.StrictMode>
++  );
++}
+diff --git a/tests/cart.test.jsx b/tests/cart.test.jsx
+new file mode 100644
+index 0000000..118cd04
+--- /dev/null
++++ b/tests/cart.test.jsx
+@@ -0,0 +1,626 @@
++import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
++import React from 'react';
++import { renderToString } from 'react-dom/server';
++import {
++  CartContext,
++  CartProvider,
++  cartReducer,
++  initialCartState,
++  calculateCartTotals,
++  VALID_COUPONS,
++  STORAGE_KEY,
++} from '../src/context/CartContext.jsx';
++import { useCart } from '../src/hooks/useCart.js';
++import { CartDrawer } from '../src/components/cart/CartDrawer.jsx';
++import { CartItemRow } from '../src/components/cart/CartItemRow.jsx';
++import { CheckoutModal } from '../src/components/cart/CheckoutModal.jsx';
++import { Toast, ToastContainer, ToastProvider, useToast } from '../src/components/common/Toast.jsx';
++import App from '../src/App.jsx';
++import { PRODUCTS } from '../src/data/products.js';
++
++// Polyfill in-memory localStorage for Node test runner
++class LocalStorageMock {
++  constructor() {
++    this.store = {};
++  }
++  getItem(key) {
++    return Object.prototype.hasOwnProperty.call(this.store, key) ? this.store[key] : null;
++  }
++  setItem(key, value) {
++    this.store[key] = String(value);
++  }
++  removeItem(key) {
++    delete this.store[key];
++  }
++  clear() {
++    this.store = {};
++  }
++}
++
++describe('Cart Reducer & Pure Business Logic', () => {
++  const sampleProduct1 = PRODUCTS[0]; // e.g. NovaBand Flow ($99)
++  const sampleProduct2 = PRODUCTS[1]; // e.g. NovaBand Pro Elite ($149)
++  const color1 = sampleProduct1.colors[0];
++  const color2 = sampleProduct1.colors[1] || sampleProduct1.colors[0];
++
++  it('should initialize with empty cart state', () => {
++    expect(initialCartState.items).toEqual([]);
++    expect(initialCartState.appliedCoupon).toBeNull();
++    expect(initialCartState.couponDiscountPercent).toBe(0);
++    expect(initialCartState.couponMessage).toBe('');
++  });
++
++  it('should calculate cart totals accurately with standard 8% tax and $150 free shipping threshold', () => {
++    // 1 item of $99 -> subtotal $99, shipping $15 (< $150), tax $99 * 0.08 = $7.92, total = $121.92
++    const items = [
++      {
++        id: 'test-1',
++        productId: sampleProduct1.id,
++        price: 99,
++        quantity: 1,
++      },
++    ];
++
++    const totals = calculateCartTotals(items, 0);
++    expect(totals.totalCount).toBe(1);
++    expect(totals.subtotal).toBe(99);
++    expect(totals.discountAmount).toBe(0);
++    expect(totals.shippingAmount).toBe(15);
++    expect(totals.taxAmount).toBe(7.92);
++    expect(totals.grandTotal).toBe(121.92);
++  });
++
++  it('should qualify for free shipping when subtotal >= $150', () => {
++    const items = [
++      {
++        id: 'test-2',
++        productId: sampleProduct2.id,
++        price: 150,
++        quantity: 1,
++      },
++    ];
++
++    const totals = calculateCartTotals(items, 0);
++    expect(totals.subtotal).toBe(150);
++    expect(totals.shippingAmount).toBe(0);
++    expect(totals.taxAmount).toBe(12);
++    expect(totals.grandTotal).toBe(162);
++  });
++
++  it('should apply 10% coupon NOVA10 and recompute discount, tax, and shipping correctly', () => {
++    const items = [
++      {
++        id: 'test-3',
++        productId: 'watch-pro',
++        price: 200,
++        quantity: 1,
++      },
++    ];
++
++    // Subtotal: 200. Discount 10% = 20. Discounted subtotal: 180.
++    // 180 >= 150 -> shipping = 0. Tax = 180 * 0.08 = 14.40. Total = 194.40.
++    const totals = calculateCartTotals(items, 10);
++    expect(totals.subtotal).toBe(200);
++    expect(totals.discountAmount).toBe(20);
++    expect(totals.discountedSubtotal).toBe(180);
++    expect(totals.shippingAmount).toBe(0);
++    expect(totals.taxAmount).toBe(14.4);
++    expect(totals.grandTotal).toBe(194.4);
++  });
++
++  it('should handle ADD_ITEM action and generate unique item ID with color and face customization', () => {
++    const state = initialCartState;
++    const action = {
++      type: 'ADD_ITEM',
++      payload: {
++        product: sampleProduct1,
++        color: color1,
++        face: 'minimal',
++        quantity: 1,
++      },
++    };
++
++    const nextState = cartReducer(state, action);
++    expect(nextState.items.length).toBe(1);
++    const item = nextState.items[0];
++    expect(item.productId).toBe(sampleProduct1.id);
++    expect(item.name).toBe(sampleProduct1.name);
++    expect(item.color.id).toBe(color1.id);
++    expect(item.face).toBe('minimal');
++    expect(item.quantity).toBe(1);
++    expect(item.id).toContain(sampleProduct1.id);
++    expect(item.id).toContain(color1.id);
++    expect(item.id).toContain('minimal');
++  });
++
++  it('should stack quantity when adding identical product, color, and watch face', () => {
++    const state1 = cartReducer(initialCartState, {
++      type: 'ADD_ITEM',
++      payload: {
++        product: sampleProduct1,
++        color: color1,
++        face: 'neon',
++        quantity: 1,
++      },
++    });
++
++    const state2 = cartReducer(state1, {
++      type: 'ADD_ITEM',
++      payload: {
++        product: sampleProduct1,
++        color: color1,
++        face: 'neon',
++        quantity: 2,
++      },
++    });
++
++    expect(state2.items.length).toBe(1);
++    expect(state2.items[0].quantity).toBe(3);
++  });
++
++  it('should create separate cart items when customized with different colorways or watch faces', () => {
++    const state1 = cartReducer(initialCartState, {
++      type: 'ADD_ITEM',
++      payload: {
++        product: sampleProduct1,
++        color: color1,
++        face: 'minimal',
++        quantity: 1,
++      },
++    });
++
++    const state2 = cartReducer(state1, {
++      type: 'ADD_ITEM',
++      payload: {
++        product: sampleProduct1,
++        color: color1,
++        face: 'chrono',
++        quantity: 1,
++      },
++    });
++
++    expect(state2.items.length).toBe(2);
++    expect(state2.items[0].face).toBe('minimal');
++    expect(state2.items[1].face).toBe('chrono');
++  });
++
++  it('should UPDATE_QUANTITY and clamp to positive numbers', () => {
++    const state1 = cartReducer(initialCartState, {
++      type: 'ADD_ITEM',
++      payload: { product: sampleProduct1, color: color1, face: 'minimal', quantity: 2 },
++    });
++    const itemId = state1.items[0].id;
++
++    const state2 = cartReducer(state1, {
++      type: 'UPDATE_QUANTITY',
++      payload: { itemId, quantity: 5 },
++    });
++    expect(state2.items[0].quantity).toBe(5);
++
++    // If quantity updated to 0 or negative, remove item
++    const state3 = cartReducer(state2, {
++      type: 'UPDATE_QUANTITY',
++      payload: { itemId, quantity: 0 },
++    });
++    expect(state3.items.length).toBe(0);
++  });
++
++  it('should REMOVE_ITEM from cart', () => {
++    const state1 = cartReducer(initialCartState, {
++      type: 'ADD_ITEM',
++      payload: { product: sampleProduct1, color: color1, face: 'minimal', quantity: 1 },
++    });
++    const itemId = state1.items[0].id;
++
++    const state2 = cartReducer(state1, {
++      type: 'REMOVE_ITEM',
++      payload: { itemId },
++    });
++    expect(state2.items.length).toBe(0);
++  });
++
++  it('should CLEAR_CART completely', () => {
++    let state = cartReducer(initialCartState, {
++      type: 'ADD_ITEM',
++      payload: { product: sampleProduct1, color: color1, face: 'minimal', quantity: 2 },
++    });
++    state = cartReducer(state, {
++      type: 'APPLY_COUPON',
++      payload: { code: 'NOVA10' },
++    });
++
++    expect(state.items.length).toBe(1);
++    expect(state.appliedCoupon).toBe('NOVA10');
++
++    const clearedState = cartReducer(state, { type: 'CLEAR_CART' });
++    expect(clearedState.items).toEqual([]);
++    expect(clearedState.appliedCoupon).toBeNull();
++    expect(clearedState.couponDiscountPercent).toBe(0);
++  });
++
++  it('should validate NOVA10 coupon code correctly and reject invalid codes', () => {
++    const stateWithValid = cartReducer(initialCartState, {
++      type: 'APPLY_COUPON',
++      payload: { code: 'nova10' }, // test case insensitivity
++    });
++    expect(stateWithValid.appliedCoupon).toBe('NOVA10');
++    expect(stateWithValid.couponDiscountPercent).toBe(10);
++    expect(stateWithValid.couponError).toBeNull();
++
++    const stateWithInvalid = cartReducer(initialCartState, {
++      type: 'APPLY_COUPON',
++      payload: { code: 'FAKECODE99' },
++    });
++    expect(stateWithInvalid.appliedCoupon).toBeNull();
++    expect(stateWithInvalid.couponDiscountPercent).toBe(0);
++    expect(stateWithInvalid.couponError).toContain('Invalid');
++  });
++
++  it('should REMOVE_COUPON and reset discounts', () => {
++    const state1 = cartReducer(initialCartState, {
++      type: 'APPLY_COUPON',
++      payload: { code: 'NOVA10' },
++    });
++    expect(state1.appliedCoupon).toBe('NOVA10');
++
++    const state2 = cartReducer(state1, { type: 'REMOVE_COUPON' });
++    expect(state2.appliedCoupon).toBeNull();
++    expect(state2.couponDiscountPercent).toBe(0);
++  });
++});
++
++describe('LocalStorage Persistence (novawear_cart_v1)', () => {
++  beforeEach(() => {
++    globalThis.localStorage = new LocalStorageMock();
++  });
++
++  afterEach(() => {
++    globalThis.localStorage.clear();
++  });
++
++  it('should have the exact storage key "novawear_cart_v1" as specified in requirements', () => {
++    expect(STORAGE_KEY).toBe('novawear_cart_v1');
++  });
++
++  it('should serialize cart state to localStorage under "novawear_cart_v1"', () => {
++    const mockData = {
++      items: [
++        {
++          id: 'watch-flow-black-minimal',
++          productId: 'nova-band-flow',
++          name: 'NovaBand Flow',
++          price: 99,
++          color: { id: 'black', name: 'Midnight Black', hex: '#1E293B' },
++          face: 'minimal',
++          quantity: 2,
++        },
++      ],
++      appliedCoupon: 'NOVA10',
++      couponDiscountPercent: 10,
++    };
++
++    globalThis.localStorage.setItem(STORAGE_KEY, JSON.stringify(mockData));
++    const raw = globalThis.localStorage.getItem(STORAGE_KEY);
++    expect(raw).not.toBeNull();
++    const parsed = JSON.parse(raw);
++    expect(parsed.items.length).toBe(1);
++    expect(parsed.appliedCoupon).toBe('NOVA10');
++  });
++});
++
++describe('useCart Hook Safety', () => {
++  it('should throw an informative error when used outside CartProvider', () => {
++    function TestComponent() {
++      useCart();
++      return null;
++    }
++
++    expect(() => renderToString(<TestComponent />)).toThrowError(
++      /useCart must be used within a CartProvider/i
++    );
++  });
++});
++
++describe('Cart UI Components Rendering', () => {
++  const mockItem = {
++    id: 'test-item-1',
++    productId: 'nova-band-flow',
++    name: 'NovaBand Flow',
++    price: 99,
++    originalPrice: 129,
++    category: 'band',
++    tier: 'standard',
++    color: {
++      id: 'black',
++      name: 'Midnight Black',
++      hex: '#1E293B',
++      chassisHex: '#0F172A',
++      strapHex: '#1E293B',
++    },
++    face: 'minimal',
++    quantity: 2,
++    lineTotal: 198,
++  };
++
++  it('should render CartItemRow with name, customization color/face, price and controls', () => {
++    const html = renderToString(
++      <CartItemRow
++        item={mockItem}
++        onUpdateQuantity={() => {}}
++        onRemove={() => {}}
++      />
++    );
++
++    expect(html).toContain('NovaBand Flow');
++    expect(html).toContain('Midnight Black');
++    expect(html).toContain('minimal');
++    expect(html).toContain('$99.00');
++    expect(html).toContain('$198.00');
++    expect(html).toContain('2'); // quantity
++  });
++
++  it('should render CartDrawer in empty state when items is empty', () => {
++    const html = renderToString(
++      <CartDrawer
++        isOpen={true}
++        onClose={() => {}}
++        items={[]}
++        totalCount={0}
++        subtotal={0}
++        discountAmount={0}
++        taxAmount={0}
++        shippingAmount={0}
++        grandTotal={0}
++      />
++    );
++
++    expect(html).toContain('Your Cart');
++    expect(html).toContain('Your cart is empty');
++  });
++
++  it('should render CartDrawer with itemized list, coupon input, and checkout CTA when items exist', () => {
++    const html = renderToString(
++      <CartDrawer
++        isOpen={true}
++        onClose={() => {}}
++        items={[mockItem]}
++        totalCount={2}
++        subtotal={198}
++        discountAmount={19.8}
++        taxAmount={14.26}
++        shippingAmount={0}
++        grandTotal={192.46}
++        appliedCoupon="NOVA10"
++        couponDiscountPercent={10}
++      />
++    );
++
++    expect(html).toContain('NovaBand Flow');
++    expect(html).toContain('Subtotal');
++    expect(html).toContain('$198.00');
++    expect(html).toContain('NOVA10');
++    expect(html).toContain('Proceed to Checkout');
++  });
++
++  it('should render CheckoutModal Step 1 (Shipping Details)', () => {
++    const html = renderToString(
++      <CheckoutModal
++        isOpen={true}
++        step={1}
++        onClose={() => {}}
++        items={[mockItem]}
++        subtotal={198}
++        discountAmount={0}
++        shippingAmount={0}
++        taxAmount={15.84}
++        grandTotal={213.84}
++      />
++    );
++
++    expect(html).toContain('Shipping');
++    expect(html).toContain('Full Name');
++    expect(html).toContain('Email Address');
++    expect(html).toContain('Shipping Address');
++    expect(html).toContain('Continue to Payment');
++  });
++
++  it('should render CheckoutModal Step 2 (Simulated Payment)', () => {
++    const html = renderToString(
++      <CheckoutModal
++        isOpen={true}
++        step={2}
++        onClose={() => {}}
++        items={[mockItem]}
++        subtotal={198}
++        discountAmount={0}
++        shippingAmount={0}
++        taxAmount={15.84}
++        grandTotal={213.84}
++      />
++    );
++
++    expect(html).toContain('Payment');
++    expect(html).toContain('Credit Card');
++    expect(html).toContain('Apple Pay / Google Pay');
++    expect(html).toContain('Cash on Delivery');
++  });
++
++  it('should render CheckoutModal Step 3 (Order Confirmation Receipt)', () => {
++    const html = renderToString(
++      <CheckoutModal
++        isOpen={true}
++        step={3}
++        orderId="NW-2026-987654"
++        onClose={() => {}}
++        items={[mockItem]}
++        subtotal={198}
++        discountAmount={0}
++        shippingAmount={0}
++        taxAmount={15.84}
++        grandTotal={213.84}
++      />
++    );
++
++    expect(html).toContain('Thank you for your order');
++    expect(html).toContain('NW-2026-987654');
++    expect(html).toContain('Continue Shopping');
++  });
++});
++
++describe('Toast Notification System', () => {
++  it('should render individual Toast component correctly with success message', () => {
++    const html = renderToString(
++      <Toast
++        id="toast-1"
++        message="Item added to cart!"
++        type="success"
++        onDismiss={() => {}}
++      />
++    );
++
++    expect(html).toContain('Item added to cart!');
++  });
++
++  it('should render ToastContainer with multiple toasts', () => {
++    const toasts = [
++      { id: '1', message: 'Added to cart', type: 'success' },
++      { id: '2', message: 'Coupon NOVA10 applied', type: 'info' },
++    ];
++
++    const html = renderToString(
++      <ToastContainer toasts={toasts} onDismiss={() => {}} />
++    );
++
++    expect(html).toContain('Added to cart');
++    expect(html).toContain('Coupon NOVA10 applied');
++  });
++});
++
++describe('Full App Orchestration', () => {
++  it('should render App component with Header, HeroSection, ProductFilter, ProductGrid, and Footer', () => {
++    const html = renderToString(<App />);
++
++    expect(html).toContain('NOVA WEARABLES');
++    expect(html).toContain('The Future of Vitality');
++    expect(html).toContain('Wearable Collection');
++    expect(html).toContain('30-Day Returns');
++  });
++});
++
++describe('Cart Rehydration & Edge Cases', () => {
++  it('should rehydrate valid cart items and coupons via REHYDRATE action', () => {
++    const persistedPayload = {
++      items: [
++        {
++          id: 'watch-core-silver-minimal',
++          productId: 'nova-watch-core',
++          name: 'NovaWatch Core',
++          price: 199,
++          quantity: 2,
++        },
++      ],
++      appliedCoupon: 'NOVA10',
++    };
++
++    const rehydrated = cartReducer(initialCartState, {
++      type: 'REHYDRATE',
++      payload: persistedPayload,
++    });
++
++    expect(rehydrated.items.length).toBe(1);
++    expect(rehydrated.items[0].name).toBe('NovaWatch Core');
++    expect(rehydrated.appliedCoupon).toBe('NOVA10');
++    expect(rehydrated.couponDiscountPercent).toBe(10);
++  });
++
++  it('should handle corrupted or malformed rehydrate payload safely', () => {
++    const badPayload = {
++      items: 'not-an-array',
++      appliedCoupon: 'INVALID_COUPON_123',
++    };
++
++    const state = cartReducer(initialCartState, {
++      type: 'REHYDRATE',
++      payload: badPayload,
++    });
++
++    expect(state.items).toEqual([]);
++    expect(state.appliedCoupon).toBeNull();
++    expect(state.couponDiscountPercent).toBe(0);
++  });
++
++  it('should render CartProvider providing context to child consumer', () => {
++    function Consumer() {
++      const { items, totalCount } = useCart();
++      return (
++        <div>
++          <span>Count: {totalCount}</span>
++          <span>Items: {items.length}</span>
++        </div>
++      );
++    }
++
++    const html = renderToString(
++      <CartProvider>
++        <Consumer />
++      </CartProvider>
++    );
++
++    expect(html).toMatch(/Count:\s*(<!-- -->)?0/);
++    expect(html).toMatch(/Items:\s*(<!-- -->)?0/);
++  });
++
++  it('should calculate free shipping progress correctly in CartDrawer when subtotal is below threshold', () => {
++    const belowThresholdItem = {
++      id: 'item-sub-100',
++      name: 'NovaBand Flow',
++      price: 99,
++      quantity: 1,
++      color: { name: 'Black', hex: '#000000' },
++      face: 'minimal',
++    };
++
++    const html = renderToString(
++      <CartDrawer
++        isOpen={true}
++        onClose={() => {}}
++        items={[belowThresholdItem]}
++        subtotal={99}
++        discountAmount={0}
++        taxAmount={7.92}
++        shippingAmount={15}
++        grandTotal={121.92}
++      />
++    );
++
++    expect(html).toContain('Add');
++    expect(html).toContain('$51.00'); // 150 - 99 = 51
++    expect(html).toContain('more for Free Shipping');
++  });
++
++  it('should display unlocked free shipping banner in CartDrawer when subtotal is $150 or more', () => {
++    const aboveThresholdItem = {
++      id: 'item-above-150',
++      name: 'NovaWatch Pro',
++      price: 299,
++      quantity: 1,
++      color: { name: 'Starlight', hex: '#E2E8F0' },
++      face: 'chrono',
++    };
++
++    const html = renderToString(
++      <CartDrawer
++        isOpen={true}
++        onClose={() => {}}
++        items={[aboveThresholdItem]}
++        subtotal={299}
++        discountAmount={0}
++        taxAmount={23.92}
++        shippingAmount={0}
++        grandTotal={322.92}
++      />
++    );
++
++    expect(html).toContain('unlocked Free Standard Shipping');
++  });
++});
