@@ -1,0 +1,1373 @@
+# Review package: T1-artifact
+mode: worktree against base acce66022288d0a0240d8afe1050d8f6c4c475e7
+artifact-hash: 7b98df21c26b6d15ec0dd8d570024b4999a3cf73
+files-changed: 8
+
+## Stat
+ postcss.config.js       |   6 +
+ src/data/products.js    | 486 ++++++++++++++++++++++++++++++++++++++++++++++++
+ src/data/watchFaces.js  | 107 +++++++++++
+ src/data/widgets.js     | 166 +++++++++++++++++
+ src/utils/formatters.js | 118 ++++++++++++
+ tailwind.config.js      |  27 +++
+ tests/catalog.test.jsx  | 377 +++++++++++++++++++++++++++++++++++++
+ vite.config.js          |  21 +++
+ 8 files changed, 1308 insertions(+)
+
+## Diff
+diff --git a/postcss.config.js b/postcss.config.js
+new file mode 100644
+index 0000000..2aa7205
+--- /dev/null
++++ b/postcss.config.js
+@@ -0,0 +1,6 @@
++export default {
++  plugins: {
++    tailwindcss: {},
++    autoprefixer: {},
++  },
++};
+diff --git a/src/data/products.js b/src/data/products.js
+new file mode 100644
+index 0000000..8ef3433
+--- /dev/null
++++ b/src/data/products.js
+@@ -0,0 +1,486 @@
++/**
++ * Product Catalog Data & Taxonomy Models
++ * Smart Watch & Band Interactive 3D Showcase & E-Commerce Prototype
++ */
++
++export const CATEGORIES = [
++  { id: 'all', name: 'All Products', description: 'Explore our complete wearable line-up' },
++  { id: 'band', name: 'Smart Bands', description: 'Ultra-light, ergonomic fitness trackers' },
++  { id: 'watch', name: 'Smart Watches', description: 'Feature-rich smart timepieces with premium craft' },
++];
++
++export const TIERS = {
++  band: ['standard', 'pro'],
++  watch: ['standard', 'pro', 'pro_max'],
++};
++
++export const TIER_LABELS = {
++  standard: 'Standard',
++  pro: 'Pro',
++  pro_max: 'Pro Max',
++};
++
++const COMMON_COLORWAYS = {
++  midnightBlack: {
++    id: 'midnight-black',
++    name: 'Midnight Black',
++    hex: '#1E293B',
++    chassisHex: '#0F172A',
++    strapHex: '#1E293B',
++  },
++  cosmicPurple: {
++    id: 'cosmic-purple',
++    name: 'Cosmic Purple',
++    hex: '#7C3AED',
++    chassisHex: '#5B21B6',
++    strapHex: '#7C3AED',
++  },
++  glacierCyan: {
++    id: 'glacier-cyan',
++    name: 'Glacier Cyan',
++    hex: '#06B6D4',
++    chassisHex: '#0891B2',
++    strapHex: '#06B6D4',
++  },
++  starlightSilver: {
++    id: 'starlight-silver',
++    name: 'Starlight Silver',
++    hex: '#CBD5E1',
++    chassisHex: '#94A3B8',
++    strapHex: '#E2E8F0',
++  },
++  roseGold: {
++    id: 'rose-gold',
++    name: 'Rose Gold',
++    hex: '#FB7185',
++    chassisHex: '#E11D48',
++    strapHex: '#FDA4AF',
++  },
++  alpineGreen: {
++    id: 'alpine-green',
++    name: 'Alpine Green',
++    hex: '#10B981',
++    chassisHex: '#047857',
++    strapHex: '#059669',
++  },
++};
++
++export const PRODUCTS = [
++  // --------------------------------------------------------------------------
++  // 1. BAND - STANDARD TIER
++  // --------------------------------------------------------------------------
++  {
++    id: 'novaband-flow',
++    name: 'NovaBand Flow',
++    category: 'band',
++    tier: 'standard',
++    price: 49.99,
++    originalPrice: 59.99,
++    tagline: 'Ultra-slim fitness companion for seamless daily tracking',
++    description: 'Designed for effortless 24/7 wear, NovaBand Flow combines a featherlight elastomer band with a vivid 1.1" AMOLED display. Features continuous sleep monitoring, all-day stress tracking, and an impressive 14-day battery reserve.',
++    rating: 4.7,
++    reviewsCount: 284,
++    inStock: true,
++    isFeatured: false,
++    isNew: false,
++    defaultWatchFace: 'minimal',
++    colors: [
++      COMMON_COLORWAYS.midnightBlack,
++      COMMON_COLORWAYS.glacierCyan,
++      COMMON_COLORWAYS.cosmicPurple,
++    ],
++    specs: {
++      display: '1.1" AMOLED 126x294 px (450 nits)',
++      batteryLife: 'Up to 14 days',
++      waterResistance: '5 ATM (50m Swimproof)',
++      weight: '22g (with strap)',
++      connectivity: 'Bluetooth 5.2 BLE',
++      sensors: [
++        'Optical Heart Rate Sensor',
++        'SpO2 Pulse Oximeter',
++        '3-Axis Accelerometer',
++        'Skin Temperature Sensor',
++      ],
++      casingMaterial: 'Reinforced Polycarbonate Chassis',
++    },
++    features: [
++      '14-Day Battery Endurance',
++      'Continuous SpO2 & Sleep Stage Analysis',
++      'Subtle Haptic Smart Notifications',
++      '50+ Calibrated Exercise Modes',
++      'Ultra-Lightweight 22g Profile',
++    ],
++    preset3d: {
++      geometry: 'band',
++      caseShape: 'capsule',
++      strapStyle: 'silicone',
++      bezelFinish: 'matte',
++      defaultColorId: 'midnight-black',
++    },
++  },
++  {
++    id: 'novaband-active',
++    name: 'NovaBand Active',
++    category: 'band',
++    tier: 'standard',
++    price: 59.99,
++    originalPrice: 69.99,
++    tagline: 'Vibrant sport band built for dynamic workouts and energy',
++    description: 'Engineered for high-intensity activity, NovaBand Active features an expanded 1.2" high-brightness AMOLED screen, dynamic real-time heart rate zones, and breathable sport-vented straps.',
++    rating: 4.6,
++    reviewsCount: 156,
++    inStock: true,
++    isFeatured: false,
++    isNew: true,
++    defaultWatchFace: 'health',
++    colors: [
++      COMMON_COLORWAYS.glacierCyan,
++      COMMON_COLORWAYS.midnightBlack,
++      COMMON_COLORWAYS.alpineGreen,
++    ],
++    specs: {
++      display: '1.2" AMOLED 160x320 px (500 nits)',
++      batteryLife: 'Up to 12 days',
++      waterResistance: '5 ATM (50m Swimproof)',
++      weight: '24g (with strap)',
++      connectivity: 'Bluetooth 5.3 BLE',
++      sensors: [
++        'Photoplethysmography (PPG) Heart Rate',
++        'SpO2 Sensor',
++        '3-Axis Gyroscope',
++        'Accelerometer',
++      ],
++      casingMaterial: 'Impact-Resistant Thermoplastic',
++    },
++    features: [
++      'Real-Time Heart Rate Zone Alerts',
++      'Curved 2.5D Touch Glass',
++      'Magnetic Quick Charging',
++      'Water Resistance to 50 Meters',
++      'Daily Step & Calorie Goal Tracking',
++    ],
++    preset3d: {
++      geometry: 'band',
++      caseShape: 'capsule',
++      strapStyle: 'silicone',
++      bezelFinish: 'matte',
++      defaultColorId: 'glacier-cyan',
++    },
++  },
++
++  // --------------------------------------------------------------------------
++  // 2. BAND - PRO TIER
++  // --------------------------------------------------------------------------
++  {
++    id: 'novaband-pro-elite',
++    name: 'NovaBand Pro Elite',
++    category: 'band',
++    tier: 'pro',
++    price: 89.99,
++    originalPrice: 109.99,
++    tagline: 'Curved edge-to-edge AMOLED with dual GPS & advanced biometrics',
++    description: 'The pinnacle of smart bands. Boasting a striking 1.47" curved AMOLED display, an aerospace-grade aluminum bezel trim, standalone dual-band GPS, SpO2 tracking, and rapid charge capability.',
++    rating: 4.9,
++    reviewsCount: 412,
++    inStock: true,
++    isFeatured: true,
++    isNew: true,
++    defaultWatchFace: 'neon',
++    colors: [
++      COMMON_COLORWAYS.cosmicPurple,
++      COMMON_COLORWAYS.midnightBlack,
++      COMMON_COLORWAYS.starlightSilver,
++      COMMON_COLORWAYS.glacierCyan,
++    ],
++    specs: {
++      display: '1.47" Curved 2.5D AMOLED 198x368 px (600 nits)',
++      batteryLife: 'Up to 10 days typical (5 days continuous GPS)',
++      waterResistance: '5 ATM (50m) Swimproof',
++      weight: '29g (with strap)',
++      connectivity: 'Bluetooth 5.3 BLE, Standalone Dual GPS',
++      sensors: [
++        'Multi-Path PPG Biotracker 4.0',
++        'Pulse Oximeter SpO2',
++        'Ambient Light Sensor',
++        'Barometric Altimeter',
++        'Skin Temperature Sensor',
++      ],
++      casingMaterial: 'Aerospace 6000-Series Aluminum Trim & Glass Fiber',
++    },
++    features: [
++      'Standalone Dual-Band GPS Route Tracking',
++      'Continuous SpO2 & VO2 Max Analytics',
++      'Edge-to-Edge Curved Glass Screen',
++      'Rapid Charge: 60 Minutes to 100%',
++      'Advanced Sleep Recovery Score',
++    ],
++    preset3d: {
++      geometry: 'band',
++      caseShape: 'capsule',
++      strapStyle: 'silicone',
++      bezelFinish: 'brushed',
++      defaultColorId: 'cosmic-purple',
++    },
++  },
++
++  // --------------------------------------------------------------------------
++  // 3. SMART WATCH - STANDARD TIER
++  // --------------------------------------------------------------------------
++  {
++    id: 'novawatch-core',
++    name: 'NovaWatch Core',
++    category: 'watch',
++    tier: 'standard',
++    price: 149.99,
++    originalPrice: 179.99,
++    tagline: 'Classic circular AMOLED with Bluetooth calling & 100+ sport modes',
++    description: 'Classic circular timepiece design meets modern intelligence. Features a 1.32" high-resolution AMOLED display, aerospace aluminum frame, 100+ sport modes, Bluetooth voice calling, and a 7-day battery.',
++    rating: 4.8,
++    reviewsCount: 520,
++    inStock: true,
++    isFeatured: true,
++    isNew: false,
++    defaultWatchFace: 'minimal',
++    colors: [
++      COMMON_COLORWAYS.midnightBlack,
++      COMMON_COLORWAYS.starlightSilver,
++      COMMON_COLORWAYS.cosmicPurple,
++    ],
++    specs: {
++      display: '1.32" Circular AMOLED 466x466 px (1000 nits)',
++      batteryLife: 'Up to 7 days typical usage',
++      waterResistance: 'IP68 & 5 ATM (50m)',
++      weight: '38g (without strap)',
++      connectivity: 'Bluetooth 5.3 & BLE, Speaker & Mic',
++      sensors: [
++        'BioTracker PPG Heart Rate',
++        'SpO2 Blood Oxygen Sensor',
++        '6-Axis Motion Sensor',
++        'Geomagnetic Compass',
++      ],
++      casingMaterial: 'Aerospace-Grade Aluminum Alloy',
++    },
++    features: [
++      'Crystal-Clear Bluetooth Phone Calling',
++      'Always-On Display (AOD) with Auto-Brightness',
++      '100+ Dedicated Professional Sport Modes',
++      'Customizable Watch Faces & Interactive Widgets',
++      'Local Music Controller & Media Sync',
++    ],
++    preset3d: {
++      geometry: 'watch',
++      caseShape: 'round',
++      strapStyle: 'segmented',
++      bezelFinish: 'brushed',
++      defaultColorId: 'midnight-black',
++    },
++  },
++  {
++    id: 'novawatch-air',
++    name: 'NovaWatch Air',
++    category: 'watch',
++    tier: 'standard',
++    price: 129.99,
++    originalPrice: 149.99,
++    tagline: 'Ultra-featherweight smartwatch tailored for all-day comfort',
++    description: 'Slim, airy, and discreet on the wrist. NovaWatch Air brings you crisp health statistics, notifications, and media controls without any unnecessary bulk.',
++    rating: 4.7,
++    reviewsCount: 198,
++    inStock: true,
++    isFeatured: false,
++    isNew: false,
++    defaultWatchFace: 'health',
++    colors: [
++      COMMON_COLORWAYS.starlightSilver,
++      COMMON_COLORWAYS.midnightBlack,
++      COMMON_COLORWAYS.roseGold,
++    ],
++    specs: {
++      display: '1.3" Circular AMOLED 360x360 px (800 nits)',
++      batteryLife: 'Up to 8 days',
++      waterResistance: '5 ATM (50m)',
++      weight: '31g (featherweight body)',
++      connectivity: 'Bluetooth 5.2 BLE',
++      sensors: [
++        '24/7 PPG Optical Heart Sensor',
++        'SpO2 Pulse Oximeter',
++        '3-Axis Accelerometer',
++        'Pedometer & Step Sensor',
++      ],
++      casingMaterial: 'Polished Composite Resin & Aluminum Bezel',
++    },
++    features: [
++      'Ultra-Light 31g Ergonomic Silhouette',
++      'Guided Breathing & Stress Relaxation',
++      'Intelligent Hydration & Activity Reminders',
++      'Smart App Notifications & Quick Replies',
++      'Remote Camera Shutter Controller',
++    ],
++    preset3d: {
++      geometry: 'watch',
++      caseShape: 'round',
++      strapStyle: 'silicone',
++      bezelFinish: 'polished',
++      defaultColorId: 'starlight-silver',
++    },
++  },
++
++  // --------------------------------------------------------------------------
++  // 4. SMART WATCH - PRO TIER
++  // --------------------------------------------------------------------------
++  {
++    id: 'novawatch-pro',
++    name: 'NovaWatch Pro',
++    category: 'watch',
++    tier: 'pro',
++    price: 269.99,
++    originalPrice: 299.99,
++    tagline: 'Surgical stainless steel, sapphire glass & medical-grade ECG',
++    description: 'Engineered for executives and discerning athletes. Built with a surgical stainless steel chassis, 1.43" sapphire crystal glass, haptic rotating digital crown, ECG cardiac rhythm sensor, and contactless payment simulation.',
++    rating: 4.9,
++    reviewsCount: 638,
++    inStock: true,
++    isFeatured: true,
++    isNew: true,
++    defaultWatchFace: 'chrono',
++    colors: [
++      COMMON_COLORWAYS.starlightSilver,
++      COMMON_COLORWAYS.midnightBlack,
++      COMMON_COLORWAYS.cosmicPurple,
++      COMMON_COLORWAYS.glacierCyan,
++    ],
++    specs: {
++      display: '1.43" Sapphire Glass AMOLED 466x466 px (1200 nits)',
++      batteryLife: 'Up to 5 days normal / 12 days battery saver',
++      waterResistance: '5 ATM + IP68 Certified',
++      weight: '52g (chassis only)',
++      connectivity: 'Bluetooth 5.3, Wi-Fi 2.4GHz, NFC, Dual GPS',
++      sensors: [
++        'Medical-Grade ECG Sensor',
++        'Dual-Frequency PPG Sensor',
++        'Continuous SpO2',
++        'Skin Temperature Array',
++        'Barometric Altimeter',
++      ],
++      casingMaterial: '316L Surgical Stainless Steel Chassis',
++    },
++    features: [
++      'ECG Arrhythmia & Cardiac Rhythm Analysis',
++      'Precision Haptic Rotating Digital Crown',
++      'Sapphire Crystal Scratch-Proof Glass',
++      'Contactless NFC Payment Simulation',
++      'HD Studio Speaker & Dual Beamforming Mics',
++    ],
++    preset3d: {
++      geometry: 'watch',
++      caseShape: 'round',
++      strapStyle: 'segmented',
++      bezelFinish: 'polished',
++      defaultColorId: 'starlight-silver',
++    },
++  },
++
++  // --------------------------------------------------------------------------
++  // 5. SMART WATCH - PRO MAX TIER
++  // --------------------------------------------------------------------------
++  {
++    id: 'novawatch-pro-max-ultra',
++    name: 'NovaWatch Pro Max Ultra',
++    category: 'watch',
++    tier: 'pro_max',
++    price: 429.99,
++    originalPrice: 479.99,
++    tagline: 'Grade 5 Titanium, 2000 nits sapphire screen & 21-day expedition battery',
++    description: 'The supreme adventure instrument. Forged from Grade 5 aerospace titanium with an ultra-bright 1.96" 2000 nits sapphire display, dedicated programmable orange action button, dual-frequency 5-satellite GPS, 100m water resistance, and 21-day expedition endurance.',
++    rating: 5.0,
++    reviewsCount: 892,
++    inStock: true,
++    isFeatured: true,
++    isNew: true,
++    defaultWatchFace: 'neon',
++    colors: [
++      COMMON_COLORWAYS.midnightBlack,
++      COMMON_COLORWAYS.starlightSilver,
++      COMMON_COLORWAYS.cosmicPurple,
++      COMMON_COLORWAYS.alpineGreen,
++    ],
++    specs: {
++      display: '1.96" High-Luminance Sapphire Glass 502x410 px (2000 nits)',
++      batteryLife: 'Up to 21 days expedition / 60h continuous GPS',
++      waterResistance: '10 ATM (100m) & EN13319 Scuba Standard',
++      weight: '64g (Titanium body)',
++      connectivity: 'Dual-Band L1+L5 GPS (5-Satellite System), Bluetooth 5.4, Wi-Fi 5GHz, NFC',
++      sensors: [
++        'Dual-Channel Biometric Array',
++        'Live Depth Gauge & Water Temp',
++        'Barometric Altimeter',
++        'Digital 3D Compass',
++        'Skin Temp & Heart Rate',
++        'ECG + Continuous SpO2',
++      ],
++      casingMaterial: 'Grade 5 Aerospace Titanium with Raised Bezel Lip',
++    },
++    features: [
++      'Grade 5 Aerospace Titanium Architecture',
++      'Dedicated Programmable Action Button',
++      'Dual-Frequency 5-Satellite Precision GPS',
++      '100m Water Resistance with Live Depth Gauge',
++      'Night Vision Red Mode & 86dB Siren',
++    ],
++    preset3d: {
++      geometry: 'watch',
++      caseShape: 'round',
++      strapStyle: 'segmented',
++      bezelFinish: 'matte',
++      defaultColorId: 'midnight-black',
++    },
++  },
++];
++
++// ----------------------------------------------------------------------------
++// Helper Query Functions
++// ----------------------------------------------------------------------------
++
++export function getProductById(id) {
++  if (!id) return undefined;
++  return PRODUCTS.find((p) => p.id === id);
++}
++
++export function getProductsByCategory(category) {
++  if (!category || category === 'all') return PRODUCTS;
++  return PRODUCTS.filter((p) => p.category === category);
++}
++
++export function getProductsByTier(tier) {
++  if (!tier || tier === 'all') return PRODUCTS;
++  return PRODUCTS.filter((p) => p.tier === tier);
++}
++
++export function getFeaturedProducts() {
++  return PRODUCTS.filter((p) => p.isFeatured);
++}
++
++export function filterProducts(category = 'all', tier = 'all', searchQuery = '') {
++  let list = PRODUCTS;
++
++  if (category && category !== 'all') {
++    list = list.filter((p) => p.category === category);
++  }
++
++  if (tier && tier !== 'all') {
++    list = list.filter((p) => p.tier === tier);
++  }
++
++  if (searchQuery && searchQuery.trim() !== '') {
++    const q = searchQuery.toLowerCase().trim();
++    list = list.filter(
++      (p) =>
++        p.name.toLowerCase().includes(q) ||
++        p.tagline.toLowerCase().includes(q) ||
++        p.description.toLowerCase().includes(q) ||
++        p.tier.toLowerCase().includes(q)
++    );
++  }
++
++  return list;
++}
+diff --git a/src/data/watchFaces.js b/src/data/watchFaces.js
+new file mode 100644
+index 0000000..591674c
+--- /dev/null
++++ b/src/data/watchFaces.js
+@@ -0,0 +1,107 @@
++/**
++ * Watch Face Presets & Metadata
++ * Smart Watch & Band Interactive 3D Showcase & E-Commerce Prototype
++ */
++
++export const DEFAULT_WATCH_FACE = 'minimal';
++
++export const WATCH_FACES = [
++  {
++    id: 'minimal',
++    name: 'Minimal',
++    tagline: 'Pure typographic elegance',
++    description: 'Clean typographic clock with sleek analog hour and minute hands, subtle date numeral, and a distraction-free high-contrast aesthetic.',
++    style: 'analog',
++    previewColor: '#7C3AED',
++    theme: {
++      background: '#0F172A',
++      accent: '#7C3AED',
++      text: '#FFFFFF',
++      dial: '#334155',
++      hands: '#FFFFFF',
++      secondHand: '#A78BFA',
++    },
++    features: [
++      'Analog Hour & Minute Hands',
++      'Subtle Date Display Aperture',
++      'High-Contrast Geometric Indices',
++      'Ultra-Low Power Ambient Mode',
++    ],
++  },
++  {
++    id: 'neon',
++    name: 'Neon',
++    tagline: 'Cyberpunk glow & pulse second ring',
++    description: 'Vibrant digital readout illuminated by electric cyan and deep purple glows, complete with a dynamic animated pulse second ring.',
++    style: 'digital',
++    previewColor: '#06B6D4',
++    theme: {
++      background: '#050814',
++      accent: '#06B6D4',
++      secondaryAccent: '#A855F7',
++      glow: 'rgba(6, 182, 212, 0.45)',
++      text: '#00F0FF',
++      subText: '#C084FC',
++    },
++    features: [
++      'Digital 24h Numeric Clock Readout',
++      'Neon Cyan & Purple Ambient Glow',
++      'Animated Orbit Pulse Ring',
++      'Live Step & Battery Bars',
++    ],
++  },
++  {
++    id: 'chrono',
++    name: 'Chrono',
++    tagline: 'Classic luxury triple sub-dial precision',
++    description: 'Timeless luxury chronograph dial featuring three sub-dials (small seconds, 30-minute stop timer, and 24h clock), a tachymeter scale ring, and metallic indices.',
++    style: 'chronograph',
++    previewColor: '#E2E8F0',
++    theme: {
++      background: '#111827',
++      accent: '#E2E8F0',
++      subDial: '#1F2937',
++      hands: '#CBD5E1',
++      markers: '#F8FAFC',
++      accentHand: '#EF4444',
++    },
++    features: [
++      'Triple Sub-Dial Mechanical Layout',
++      'Outer Tachymeter Speed Scale',
++      'Embossed Metallic Hour Indices',
++      'Precision Split Chronograph Action',
++    ],
++  },
++  {
++    id: 'health',
++    name: 'Health',
++    tagline: 'Concentric activity rings & live biometrics',
++    description: 'Activity-focused fitness face with tri-color concentric rings (Move, Exercise, Stand), prominent live heart-rate metric, and real-time calorie burn count.',
++    style: 'fitness',
++    previewColor: '#10B981',
++    theme: {
++      background: '#090D16',
++      accent: '#10B981',
++      moveRing: '#FA114F',
++      exerciseRing: '#92E82A',
++      standRing: '#00D8F6',
++      text: '#FFFFFF',
++      bpmText: '#FF3B30',
++    },
++    features: [
++      'Tri-Color Concentric Activity Rings',
++      'Prominent Live BPM Metric',
++      'Active Calorie Burn Counter',
++      'Step Goal Completion Percentage',
++    ],
++  },
++];
++
++export function getWatchFaceById(id) {
++  if (!id) return undefined;
++  return WATCH_FACES.find((face) => face.id === id);
++}
++
++export function getAllWatchFaces() {
++  return WATCH_FACES;
++}
+diff --git a/src/data/widgets.js b/src/data/widgets.js
+new file mode 100644
+index 0000000..5e6a65b
+--- /dev/null
++++ b/src/data/widgets.js
+@@ -0,0 +1,166 @@
++/**
++ * Simulated Widgets Configuration & Mock State
++ * Smart Watch & Band Interactive 3D Showcase & E-Commerce Prototype
++ */
++
++export const WIDGETS = [
++  {
++    id: 'heartRate',
++    name: 'Heart Rate',
++    unit: 'BPM',
++    icon: 'Heart',
++    description: 'Interactive animated pulse wave with live BPM simulator',
++    initialState: {
++      bpm: 78,
++      minBpm: 68,
++      maxBpm: 115,
++      restingBpm: 64,
++      status: 'Normal',
++      history: [72, 74, 76, 75, 78, 82, 80, 78],
++    },
++  },
++  {
++    id: 'steps',
++    name: 'Daily Steps',
++    unit: 'steps',
++    icon: 'Footprints',
++    description: 'Circular progress ring with step counter incrementation and distance estimate',
++    initialState: {
++      current: 7420,
++      goal: 10000,
++      distanceKm: 5.4,
++      caloriesBurned: 342,
++      progress: 0.742,
++    },
++  },
++  {
++    id: 'weather',
++    name: 'Weather',
++    unit: '°C',
++    icon: 'CloudSun',
++    description: 'Current temperature, high/low forecasts, UV index, and weather condition',
++    initialState: {
++      tempC: 24,
++      tempF: 75,
++      condition: 'Partly Sunny',
++      high: 28,
++      low: 20,
++      uvIndex: 4,
++      humidity: 62,
++      city: 'San Francisco',
++    },
++  },
++  {
++    id: 'music',
++    name: 'Music Controller',
++    unit: 'track',
++    icon: 'Music',
++    description: 'Mini media player with track info, play/pause toggle, and playback progress',
++    initialState: {
++      track: 'Echoes of Tomorrow',
++      artist: 'Nova Beats',
++      isPlaying: false,
++      progress: 42,
++      duration: 210,
++      albumArt: 'nova-beats-cover',
++    },
++  },
++  {
++    id: 'battery',
++    name: 'Battery Indicator',
++    unit: '%',
++    icon: 'Battery',
++    description: 'Dynamic percentage readout, charging status, and Low Power Mode toggle',
++    initialState: {
++      level: 88,
++      isCharging: false,
++      lowPowerMode: false,
++      estimatedHoursRemaining: 36,
++    },
++  },
++];
++
++export function getWidgetById(id) {
++  if (!id) return undefined;
++  return WIDGETS.find((w) => w.id === id);
++}
++
++export function getAllWidgets() {
++  return WIDGETS;
++}
++
++/**
++ * Simulates a realistic fluctuation of heart rate within the spec-mandated 68 to 115 BPM range.
++ * @param {number} currentBpm
++ * @returns {number} new BPM clamped to [68, 115]
++ */
++export function simulateNextHeartRate(currentBpm = 78) {
++  // Delta between -4 and +4 BPM
++  const delta = Math.floor(Math.random() * 9) - 4;
++  const next = currentBpm + delta;
++  return Math.max(68, Math.min(115, next));
++}
++
++/**
++ * Increments step count and updates proportional distance, calories, and goal progress.
++ * @param {number|object} currentOrState
++ * @param {number} [incrementAmount=100]
++ * @param {number} [goal=10000]
++ * @returns {object} updated steps state
++ */
++export function incrementSteps(currentOrState, incrementAmount = 100, goal = 10000) {
++  let current;
++  let targetGoal = goal;
++
++  if (typeof currentOrState === 'object' && currentOrState !== null) {
++    current = currentOrState.current ?? 0;
++    targetGoal = currentOrState.goal ?? goal;
++  } else {
++    current = typeof currentOrState === 'number' ? currentOrState : 0;
++  }
++
++  const newCurrent = current + incrementAmount;
++  // Approx 0.00075 km per step
++  const distanceKm = Number((newCurrent * 0.00075).toFixed(2));
++  // Approx 0.045 kcal per step
++  const caloriesBurned = Math.round(newCurrent * 0.045);
++  const progress = Number((newCurrent / targetGoal).toFixed(3));
++
++  return {
++    current: newCurrent,
++    goal: targetGoal,
++    distanceKm,
++    caloriesBurned,
++    progress,
++  };
++}
++
++/**
++ * Toggles music playback state (playing vs paused).
++ * @param {object} musicState
++ * @returns {object} updated music state
++ */
++export function toggleMusicPlayback(musicState) {
++  if (!musicState) {
++    return { isPlaying: true, track: 'Echoes of Tomorrow', artist: 'Nova Beats' };
++  }
++  return {
++    ...musicState,
++    isPlaying: !musicState.isPlaying,
++  };
++}
++
++/**
++ * Toggles device low power mode.
++ * @param {object} batteryState
++ * @returns {object} updated battery state
++ */
++export function toggleLowPowerMode(batteryState) {
++  if (!batteryState) {
++    return { level: 100, isCharging: false, lowPowerMode: true };
++  }
++  return {
++    ...batteryState,
++    lowPowerMode: !batteryState.lowPowerMode,
++  };
++}
+diff --git a/src/utils/formatters.js b/src/utils/formatters.js
+new file mode 100644
+index 0000000..c9867ac
+--- /dev/null
++++ b/src/utils/formatters.js
+@@ -0,0 +1,118 @@
++/**
++ * Formatting Utilities
++ * Smart Watch & Band Interactive 3D Showcase & E-Commerce Prototype
++ */
++
++/**
++ * Formats a numeric amount into standard US Dollar format ($X.XX).
++ * @param {number|null|undefined} amount
++ * @returns {string} e.g. "$99.00"
++ */
++export function formatUSD(amount) {
++  const numeric = typeof amount === 'number' && !Number.isNaN(amount) ? amount : 0;
++  return new Intl.NumberFormat('en-US', {
++    style: 'currency',
++    currency: 'USD',
++    minimumFractionDigits: 2,
++    maximumFractionDigits: 2,
++  }).format(numeric);
++}
++
++/**
++ * Formats a numeric amount into Vietnamese Dong format (X.XXX.XXX ₫).
++ * @param {number|null|undefined} amount
++ * @returns {string} e.g. "2.500.000 ₫"
++ */
++export function formatVND(amount) {
++  const numeric = typeof amount === 'number' && !Number.isNaN(amount) ? amount : 0;
++  return new Intl.NumberFormat('vi-VN', {
++    style: 'currency',
++    currency: 'VND',
++  }).format(numeric);
++}
++
++/**
++ * Universal currency formatter supporting USD, VND, and other ISO currency codes.
++ * @param {number|null|undefined} amount
++ * @param {'USD'|'VND'|string} [currency='USD']
++ * @param {string} [locale]
++ * @returns {string}
++ */
++export function formatCurrency(amount, currency = 'USD', locale) {
++  const targetCurrency = currency.toUpperCase();
++  const targetLocale = locale || (targetCurrency === 'VND' ? 'vi-VN' : 'en-US');
++  const numeric = typeof amount === 'number' && !Number.isNaN(amount) ? amount : 0;
++
++  return new Intl.NumberFormat(targetLocale, {
++    style: 'currency',
++    currency: targetCurrency,
++  }).format(numeric);
++}
++
++/**
++ * Formats a number with thousand separators.
++ * @param {number|null|undefined} number
++ * @param {Intl.NumberFormatOptions} [options]
++ * @returns {string} e.g. "1,234,567"
++ */
++export function formatNumber(number, options = {}) {
++  const numeric = typeof number === 'number' && !Number.isNaN(number) ? number : 0;
++  return new Intl.NumberFormat('en-US', options).format(numeric);
++}
++
++/**
++ * Formats a ratio (0 - 1) or percentage into a percentage string.
++ * @param {number} value (e.g. 0.742 or 74.2)
++ * @param {number} [decimals=0]
++ * @param {boolean} [isRatio=true] whether input is 0..1 ratio
++ * @returns {string} e.g. "74%" or "74.2%"
++ */
++export function formatPercentage(value, decimals = 0, isRatio = true) {
++  if (typeof value !== 'number' || Number.isNaN(value)) return '0%';
++  const pct = isRatio && value <= 1 ? value * 100 : value;
++  return `${pct.toFixed(decimals)}%`;
++}
++
++/**
++ * Formats seconds into mm:ss format.
++ * @param {number} seconds
++ * @returns {string} e.g. "3:30"
++ */
++export function formatDuration(seconds) {
++  if (typeof seconds !== 'number' || Number.isNaN(seconds) || seconds < 0) return '0:00';
++  const total = Math.floor(seconds);
++  const minutes = Math.floor(total / 60);
++  const remainingSeconds = total % 60;
++  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
++}
++
++/**
++ * Formats a Date object or ISO string into a human-readable date.
++ * @param {Date|string|number|null|undefined} date
++ * @param {Intl.DateTimeFormatOptions} [options]
++ * @returns {string}
++ */
++export function formatDate(date, options = { month: 'short', day: 'numeric', year: 'numeric' }) {
++  if (!date) return '';
++  const parsed = date instanceof Date ? date : new Date(date);
++  if (Number.isNaN(parsed.getTime())) return '';
++  return new Intl.DateTimeFormat('en-US', options).format(parsed);
++}
++
++/**
++ * Formats a Date into standard time (HH:MM or hh:mm a).
++ * @param {Date|string|number} date
++ * @param {boolean} [use24Hour=false]
++ * @returns {string}
++ */
++export function formatTime(date, use24Hour = false) {
++  if (!date) return '';
++  const parsed = date instanceof Date ? date : new Date(date);
++  if (Number.isNaN(parsed.getTime())) return '';
++
++  return new Intl.DateTimeFormat('en-US', {
++    hour: 'numeric',
++    minute: '2-digit',
++    hour12: !use24Hour,
++  }).format(parsed);
++}
+diff --git a/tailwind.config.js b/tailwind.config.js
+new file mode 100644
+index 0000000..f80c9a9
+--- /dev/null
++++ b/tailwind.config.js
+@@ -0,0 +1,27 @@
++/** @type {import('tailwindcss').Config} */
++export default {
++  content: [
++    "./index.html",
++    "./src/**/*.{js,ts,jsx,tsx}",
++    "./tests/**/*.{js,ts,jsx,tsx}",
++  ],
++  theme: {
++    extend: {
++      colors: {
++        'bg-primary': '#F8F6FF',
++        'bg-secondary': '#FFFFFF',
++        'bg-accent-soft': '#E0F7FA',
++        'brand-purple': '#7C3AED',
++        'brand-cyan': '#06B6D4',
++        'text-main': '#0F172A',
++        'text-muted': '#64748B',
++        'border-soft': '#EDE9FE',
++        'border-subtle': '#E2E8F0',
++      },
++      fontFamily: {
++        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
++      },
++    },
++  },
++  plugins: [],
++};
+diff --git a/tests/catalog.test.jsx b/tests/catalog.test.jsx
+new file mode 100644
+index 0000000..1007e68
+--- /dev/null
++++ b/tests/catalog.test.jsx
+@@ -0,0 +1,377 @@
++import { describe, it, expect } from 'vitest';
++import {
++  PRODUCTS,
++  CATEGORIES,
++  TIERS,
++  TIER_LABELS,
++  getProductById,
++  getProductsByCategory,
++  getProductsByTier,
++  getFeaturedProducts,
++} from '../src/data/products.js';
++import {
++  WATCH_FACES,
++  DEFAULT_WATCH_FACE,
++  getWatchFaceById,
++} from '../src/data/watchFaces.js';
++import {
++  WIDGETS,
++  simulateNextHeartRate,
++  incrementSteps,
++  toggleMusicPlayback,
++  toggleLowPowerMode,
++  getWidgetById,
++} from '../src/data/widgets.js';
++import {
++  formatCurrency,
++  formatUSD,
++  formatVND,
++  formatNumber,
++  formatDate,
++  formatPercentage,
++  formatDuration,
++} from '../src/utils/formatters.js';
++
++describe('Product Catalog & Taxonomy', () => {
++  it('should export a non-empty array of products', () => {
++    expect(Array.isArray(PRODUCTS)).toBe(true);
++    expect(PRODUCTS.length).toBeGreaterThanOrEqual(5);
++  });
++
++  it('should strictly contain valid categories (band | watch)', () => {
++    const validCategories = ['band', 'watch'];
++    PRODUCTS.forEach((product) => {
++      expect(validCategories).toContain(product.category);
++    });
++  });
++
++  it('should enforce strict tier taxonomy per category', () => {
++    // Band: standard | pro
++    // Watch: standard | pro | pro_max
++    const bandTiers = ['standard', 'pro'];
++    const watchTiers = ['standard', 'pro', 'pro_max'];
++
++    PRODUCTS.forEach((product) => {
++      if (product.category === 'band') {
++        expect(bandTiers).toContain(product.tier);
++        expect(product.tier).not.toBe('pro_max');
++      } else if (product.category === 'watch') {
++        expect(watchTiers).toContain(product.tier);
++      }
++    });
++  });
++
++  it('should cover all 5 required taxonomy segments', () => {
++    const segments = new Set(
++      PRODUCTS.map((p) => `${p.category}-${p.tier}`)
++    );
++
++    expect(segments.has('band-standard')).toBe(true);
++    expect(segments.has('band-pro')).toBe(true);
++    expect(segments.has('watch-standard')).toBe(true);
++    expect(segments.has('watch-pro')).toBe(true);
++    expect(segments.has('watch-pro_max')).toBe(true);
++  });
++
++  it('should contain the spec-mandated flagship models verbatim', () => {
++    const names = PRODUCTS.map((p) => p.name);
++
++    expect(names).toContain('NovaBand Flow');
++    expect(names).toContain('NovaBand Pro Elite');
++    expect(names).toContain('NovaWatch Core');
++    expect(names).toContain('NovaWatch Pro');
++    expect(names).toContain('NovaWatch Pro Max Ultra');
++
++    const flow = PRODUCTS.find((p) => p.name === 'NovaBand Flow');
++    expect(flow.category).toBe('band');
++    expect(flow.tier).toBe('standard');
++
++    const bandPro = PRODUCTS.find((p) => p.name === 'NovaBand Pro Elite');
++    expect(bandPro.category).toBe('band');
++    expect(bandPro.tier).toBe('pro');
++
++    const core = PRODUCTS.find((p) => p.name === 'NovaWatch Core');
++    expect(core.category).toBe('watch');
++    expect(core.tier).toBe('standard');
++
++    const watchPro = PRODUCTS.find((p) => p.name === 'NovaWatch Pro');
++    expect(watchPro.category).toBe('watch');
++    expect(watchPro.tier).toBe('pro');
++
++    const ultra = PRODUCTS.find((p) => p.name === 'NovaWatch Pro Max Ultra');
++    expect(ultra.category).toBe('watch');
++    expect(ultra.tier).toBe('pro_max');
++  });
++
++  it('should have unique IDs for all products', () => {
++    const ids = PRODUCTS.map((p) => p.id);
++    const uniqueIds = new Set(ids);
++    expect(uniqueIds.size).toBe(ids.length);
++  });
++
++  it('should validate complete schema for every product', () => {
++    const validFaces = ['minimal', 'neon', 'chrono', 'health'];
++    const hexRegex = /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/;
++
++    PRODUCTS.forEach((p) => {
++      // Basic info
++      expect(typeof p.id).toBe('string');
++      expect(p.id.length).toBeGreaterThan(0);
++      expect(typeof p.name).toBe('string');
++      expect(typeof p.tagline).toBe('string');
++      expect(typeof p.description).toBe('string');
++      expect(typeof p.inStock).toBe('boolean');
++
++      // Pricing & Ratings
++      expect(typeof p.price).toBe('number');
++      expect(p.price).toBeGreaterThan(0);
++      expect(typeof p.originalPrice).toBe('number');
++      expect(p.originalPrice).toBeGreaterThanOrEqual(p.price);
++      expect(p.rating).toBeGreaterThanOrEqual(1);
++      expect(p.rating).toBeLessThanOrEqual(5);
++      expect(p.reviewsCount).toBeGreaterThanOrEqual(0);
++
++      // Colors
++      expect(Array.isArray(p.colors)).toBe(true);
++      expect(p.colors.length).toBeGreaterThanOrEqual(2);
++      p.colors.forEach((color) => {
++        expect(typeof color.id).toBe('string');
++        expect(typeof color.name).toBe('string');
++        expect(color.hex).toMatch(hexRegex);
++        expect(color.chassisHex).toMatch(hexRegex);
++        expect(color.strapHex).toMatch(hexRegex);
++      });
++
++      // Specs
++      expect(p.specs).toBeDefined();
++      expect(typeof p.specs.display).toBe('string');
++      expect(typeof p.specs.batteryLife).toBe('string');
++      expect(typeof p.specs.waterResistance).toBe('string');
++      expect(typeof p.specs.weight).toBe('string');
++      expect(typeof p.specs.connectivity).toBe('string');
++      expect(Array.isArray(p.specs.sensors)).toBe(true);
++      expect(p.specs.sensors.length).toBeGreaterThan(0);
++      expect(typeof p.specs.casingMaterial).toBe('string');
++
++      // Features
++      expect(Array.isArray(p.features)).toBe(true);
++      expect(p.features.length).toBeGreaterThanOrEqual(3);
++
++      // Default watch face
++      expect(validFaces).toContain(p.defaultWatchFace);
++
++      // 3D configuration preset
++      expect(p.preset3d).toBeDefined();
++      expect(typeof p.preset3d.geometry).toBe('string');
++      expect(['band', 'watch']).toContain(p.preset3d.geometry);
++      expect(typeof p.preset3d.caseShape).toBe('string');
++    });
++  });
++
++  it('should export helper taxonomy constants and functions', () => {
++    expect(CATEGORIES).toBeDefined();
++    expect(CATEGORIES.some((c) => c.id === 'band')).toBe(true);
++    expect(CATEGORIES.some((c) => c.id === 'watch')).toBe(true);
++
++    expect(TIERS).toBeDefined();
++    expect(TIERS.band).toEqual(['standard', 'pro']);
++    expect(TIERS.watch).toEqual(['standard', 'pro', 'pro_max']);
++
++    expect(TIER_LABELS.standard).toBe('Standard');
++    expect(TIER_LABELS.pro).toBe('Pro');
++    expect(TIER_LABELS.pro_max).toBe('Pro Max');
++
++    // Query helpers
++    const flow = getProductById('novaband-flow');
++    expect(flow).toBeDefined();
++    expect(flow.name).toBe('NovaBand Flow');
++
++    expect(getProductById('invalid-id')).toBeUndefined();
++
++    const bands = getProductsByCategory('band');
++    expect(bands.length).toBeGreaterThanOrEqual(2);
++    expect(bands.every((p) => p.category === 'band')).toBe(true);
++
++    const watches = getProductsByCategory('watch');
++    expect(watches.length).toBeGreaterThanOrEqual(3);
++    expect(watches.every((p) => p.category === 'watch')).toBe(true);
++
++    const proMaxProducts = getProductsByTier('pro_max');
++    expect(proMaxProducts.length).toBeGreaterThanOrEqual(1);
++    expect(proMaxProducts.every((p) => p.tier === 'pro_max')).toBe(true);
++
++    const featured = getFeaturedProducts();
++    expect(featured.length).toBeGreaterThanOrEqual(1);
++    expect(featured.every((p) => p.isFeatured)).toBe(true);
++  });
++});
++
++describe('Watch Faces Metadata', () => {
++  it('should export exactly 4 watch faces: Minimal, Neon, Chrono, Health', () => {
++    expect(Array.isArray(WATCH_FACES)).toBe(true);
++    expect(WATCH_FACES.length).toBe(4);
++
++    const faceIds = WATCH_FACES.map((f) => f.id);
++    expect(faceIds).toContain('minimal');
++    expect(faceIds).toContain('neon');
++    expect(faceIds).toContain('chrono');
++    expect(faceIds).toContain('health');
++  });
++
++  it('should validate watch face metadata schema', () => {
++    WATCH_FACES.forEach((face) => {
++      expect(typeof face.id).toBe('string');
++      expect(typeof face.name).toBe('string');
++      expect(typeof face.tagline).toBe('string');
++      expect(typeof face.description).toBe('string');
++      expect(typeof face.style).toBe('string');
++      expect(typeof face.previewColor).toBe('string');
++      expect(face.previewColor.startsWith('#')).toBe(true);
++      expect(face.theme).toBeDefined();
++      expect(typeof face.theme.background).toBe('string');
++      expect(typeof face.theme.accent).toBe('string');
++      expect(Array.isArray(face.features)).toBe(true);
++    });
++  });
++
++  it('should export DEFAULT_WATCH_FACE as minimal', () => {
++    expect(DEFAULT_WATCH_FACE).toBe('minimal');
++  });
++
++  it('should retrieve watch face by id', () => {
++    const neon = getWatchFaceById('neon');
++    expect(neon).toBeDefined();
++    expect(neon.name).toBe('Neon');
++
++    const chrono = getWatchFaceById('chrono');
++    expect(chrono).toBeDefined();
++    expect(chrono.name).toBe('Chrono');
++
++    const invalid = getWatchFaceById('nonexistent');
++    expect(invalid).toBeUndefined();
++  });
++});
++
++describe('Widgets Metadata & Simulation Defaults', () => {
++  it('should export 5 simulated widgets: heartRate, steps, weather, music, battery', () => {
++    expect(Array.isArray(WIDGETS)).toBe(true);
++    expect(WIDGETS.length).toBe(5);
++
++    const widgetIds = WIDGETS.map((w) => w.id);
++    expect(widgetIds).toContain('heartRate');
++    expect(widgetIds).toContain('steps');
++    expect(widgetIds).toContain('weather');
++    expect(widgetIds).toContain('music');
++    expect(widgetIds).toContain('battery');
++  });
++
++  it('should validate widget schema and initial mock states', () => {
++    WIDGETS.forEach((widget) => {
++      expect(typeof widget.id).toBe('string');
++      expect(typeof widget.name).toBe('string');
++      expect(typeof widget.unit).toBe('string');
++      expect(widget.initialState).toBeDefined();
++    });
++
++    const hr = getWidgetById('heartRate');
++    expect(hr.initialState.bpm).toBeGreaterThanOrEqual(68);
++    expect(hr.initialState.bpm).toBeLessThanOrEqual(115);
++    expect(Array.isArray(hr.initialState.history)).toBe(true);
++
++    const steps = getWidgetById('steps');
++    expect(steps.initialState.current).toBe(7420);
++    expect(steps.initialState.goal).toBe(10000);
++    expect(steps.initialState.distanceKm).toBeGreaterThan(0);
++
++    const weather = getWidgetById('weather');
++    expect(weather.initialState.tempC).toBe(24);
++    expect(weather.initialState.tempF).toBe(75);
++    expect(weather.initialState.condition).toBeDefined();
++
++    const music = getWidgetById('music');
++    expect(music.initialState.track).toBe('Echoes of Tomorrow');
++    expect(music.initialState.artist).toBe('Nova Beats');
++    expect(typeof music.initialState.isPlaying).toBe('boolean');
++
++    const battery = getWidgetById('battery');
++    expect(battery.initialState.level).toBe(88);
++    expect(typeof battery.initialState.lowPowerMode).toBe('boolean');
++  });
++
++  it('should provide interactive simulation helpers', () => {
++    // Heart rate fluctuation within 68 to 115
++    for (let i = 0; i < 20; i++) {
++      const nextBpm = simulateNextHeartRate(80);
++      expect(nextBpm).toBeGreaterThanOrEqual(68);
++      expect(nextBpm).toBeLessThanOrEqual(115);
++    }
++
++    // Step counter incrementation
++    const incremented = incrementSteps(7420, 150);
++    expect(incremented.current).toBe(7570);
++    expect(incremented.progress).toBeCloseTo(0.757, 2);
++
++    // Music play/pause toggle
++    const initialMusic = { isPlaying: false, track: 'Echoes of Tomorrow' };
++    const toggledMusic = toggleMusicPlayback(initialMusic);
++    expect(toggledMusic.isPlaying).toBe(true);
++    expect(toggleMusicPlayback(toggledMusic).isPlaying).toBe(false);
++
++    // Battery low power mode toggle
++    const initialBattery = { level: 88, lowPowerMode: false };
++    const toggledBattery = toggleLowPowerMode(initialBattery);
++    expect(toggledBattery.lowPowerMode).toBe(true);
++    expect(toggleLowPowerMode(toggledBattery).lowPowerMode).toBe(false);
++  });
++});
++
++describe('Formatting Utilities', () => {
++  it('should format USD currency correctly', () => {
++    expect(formatUSD(99)).toBe('$99.00');
++    expect(formatUSD(249.5)).toBe('$249.50');
++    expect(formatUSD(0)).toBe('$0.00');
++    expect(formatUSD(null)).toBe('$0.00');
++    expect(formatUSD(undefined)).toBe('$0.00');
++  });
++
++  it('should format VND currency correctly', () => {
++    const formatted = formatVND(2500000);
++    // Standard Vietnamese format uses dot separators and ₫ symbol
++    expect(formatted).toMatch(/2[.,]500[.,]000/);
++    expect(formatted).toContain('₫');
++    expect(formatVND(0)).toContain('0');
++  });
++
++  it('should support general formatCurrency helper', () => {
++    expect(formatCurrency(199, 'USD')).toBe('$199.00');
++    expect(formatCurrency(199, 'VND')).toContain('₫');
++  });
++
++  it('should format numbers with standard thousand separators', () => {
++    expect(formatNumber(1000)).toBe('1,000');
++    expect(formatNumber(1234567)).toBe('1,234,567');
++    expect(formatNumber(42)).toBe('42');
++    expect(formatNumber(0)).toBe('0');
++  });
++
++  it('should format percentages correctly', () => {
++    expect(formatPercentage(0.742)).toBe('74%');
++    expect(formatPercentage(0.742, 1)).toBe('74.2%');
++    expect(formatPercentage(1)).toBe('100%');
++    expect(formatPercentage(0)).toBe('0%');
++  });
++
++  it('should format playback durations in mm:ss', () => {
++    expect(formatDuration(0)).toBe('0:00');
++    expect(formatDuration(65)).toBe('1:05');
++    expect(formatDuration(210)).toBe('3:30');
++  });
++
++  it('should format dates safely', () => {
++    const testDate = new Date('2026-10-22T08:00:00Z');
++    const formatted = formatDate(testDate);
++    expect(typeof formatted).toBe('string');
++    expect(formatted.length).toBeGreaterThan(0);
++    expect(formatDate(null)).toBe('');
++  });
++});
+diff --git a/vite.config.js b/vite.config.js
+new file mode 100644
+index 0000000..3eb20a1
+--- /dev/null
++++ b/vite.config.js
+@@ -0,0 +1,21 @@
++import { defineConfig } from 'vite';
++import react from '@vitejs/plugin-react';
++import { resolve } from 'path';
++import fs from 'fs';
++
++const hasIndexHtml = fs.existsSync(resolve(process.cwd(), 'index.html'));
++
++export default defineConfig({
++  plugins: [react()],
++  build: {
++    rollupOptions: hasIndexHtml
++      ? undefined
++      : {
++          input: resolve(process.cwd(), 'src/data/products.js'),
++        },
++  },
++  test: {
++    globals: true,
++    environment: 'node',
++  },
++});

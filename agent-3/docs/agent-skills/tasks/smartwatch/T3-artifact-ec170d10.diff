@@ -1,0 +1,1930 @@
+# Review package: T3-artifact
+mode: worktree against base 17674b93110862f9cd3aa3b8baf838e03f79904c
+artifact-hash: ec170d104e2f5285f6d491c712a7593c856c94cc
+files-changed: 10
+
+## Stat
+ src/components/catalog/ProductCard.jsx        | 239 +++++++++++++++
+ src/components/catalog/ProductDetailModal.jsx | 403 ++++++++++++++++++++++++++
+ src/components/catalog/ProductFilter.jsx      | 179 ++++++++++++
+ src/components/catalog/ProductGrid.jsx        |  77 +++++
+ src/components/common/Badge.jsx               |  67 +++++
+ src/components/common/Footer.jsx              | 145 +++++++++
+ src/components/common/Header.jsx              | 185 ++++++++++++
+ src/components/hero/HeroSection.jsx           | 147 ++++++++++
+ src/index.css                                 |  87 ++++++
+ tests/catalog.test.jsx                        | 301 +++++++++++++++++++
+ 10 files changed, 1830 insertions(+)
+
+## Diff
+diff --git a/src/components/catalog/ProductCard.jsx b/src/components/catalog/ProductCard.jsx
+new file mode 100644
+index 0000000..05452ac
+--- /dev/null
++++ b/src/components/catalog/ProductCard.jsx
+@@ -0,0 +1,239 @@
++/**
++ * Interactive Wearable Product Card Component
++ * Pricing, Badges, Key Technical Specs, Color Swatches, "Try in 3D", and "Add to Cart"
++ * Smart Watch & Band Interactive 3D Showcase & E-Commerce Prototype
++ */
++
++import React, { useState } from 'react';
++import { Box, ShoppingBag, Check, Battery, Droplets, Eye, Star, Sparkles } from 'lucide-react';
++import { Badge } from '../common/Badge.jsx';
++import { formatUSD } from '../../utils/formatters.js';
++
++export function ProductCard({
++  product,
++  onAddToCart = () => {},
++  onTryIn3D = () => {},
++  onSelectProduct = () => {},
++  className = '',
++}) {
++  if (!product) return null;
++
++  const [selectedColor, setSelectedColor] = useState(
++    product.colors && product.colors.length > 0 ? product.colors[0] : null
++  );
++  const [isAdded, setIsAdded] = useState(false);
++
++  const hasDiscount = product.originalPrice && product.originalPrice > product.price;
++  const discountPercent = hasDiscount
++    ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
++    : 0;
++
++  const handleAddToCart = (e) => {
++    e.stopPropagation();
++    onAddToCart(product, selectedColor);
++    setIsAdded(true);
++    setTimeout(() => {
++      setIsAdded(false);
++    }, 1500);
++  };
++
++  const handleTryIn3D = (e) => {
++    e.stopPropagation();
++    onTryIn3D(product, selectedColor);
++  };
++
++  const handleColorClick = (e, color) => {
++    e.stopPropagation();
++    setSelectedColor(color);
++  };
++
++  return (
++    <div
++      onClick={() => onSelectProduct(product)}
++      className={`group relative bg-white rounded-3xl p-5 md:p-6 border border-purple-100/80 shadow-xs hover:shadow-xl hover:shadow-purple-500/10 hover:border-purple-300 transition-all duration-300 flex flex-col justify-between cursor-pointer ${className}`}
++      data-testid={`product-card-${product.id}`}
++    >
++      <div>
++        {/* Top Header: Category/Tier Badges & Discount Pill */}
++        <div className="flex items-center justify-between gap-2 mb-4">
++          <Badge category={product.category} tier={product.tier} variant="combined" size="sm" />
++          <div className="flex items-center gap-1.5">
++            {product.isNew && (
++              <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-200">
++                New
++              </span>
++            )}
++            {hasDiscount && (
++              <span className="text-[10px] font-bold uppercase tracking-wider bg-rose-50 text-rose-700 px-2 py-0.5 rounded-full border border-rose-200">
++                Save {discountPercent}%
++              </span>
++            )}
++          </div>
++        </div>
++
++        {/* Visual Device Showcase Preview */}
++        <div className="relative w-full h-44 rounded-2xl bg-gradient-to-b from-[#F5F3FF] via-[#FAF8FF] to-white flex items-center justify-center p-4 overflow-hidden border border-purple-50 group-hover:border-purple-200/60 transition-colors">
++          {/* Subtle Circular Radial Glow matching selected color */}
++          <div
++            className="absolute w-28 h-28 rounded-full blur-2xl opacity-40 transition-colors duration-500"
++            style={{ backgroundColor: selectedColor?.hex || '#7C3AED' }}
++          />
++
++          {/* Procedural Graphic Device Silhouette */}
++          <div className="relative z-10 flex flex-col items-center">
++            <div
++              className={`transition-all duration-300 shadow-md ${
++                product.category === 'watch'
++                  ? 'w-24 h-24 rounded-full border-4'
++                  : 'w-14 h-28 rounded-3xl border-4'
++              }`}
++              style={{
++                borderColor: selectedColor?.chassisHex || '#0F172A',
++                backgroundColor: '#0F172A',
++              }}
++            >
++              {/* Screen Face Content */}
++              <div className="w-full h-full flex flex-col items-center justify-center text-center p-2 rounded-full overflow-hidden bg-slate-950">
++                <span
++                  className="text-[10px] font-bold tracking-tight font-mono transition-colors"
++                  style={{ color: selectedColor?.hex || '#06B6D4' }}
++                >
++                  10:24
++                </span>
++                <span className="text-[8px] text-slate-400 mt-0.5 flex items-center gap-0.5">
++                  <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400" />
++                  {product.rating}
++                </span>
++              </div>
++            </div>
++
++            {/* Strap Representation */}
++            <div
++              className="w-10 h-3 rounded-b-md mt-0.5 transition-colors"
++              style={{ backgroundColor: selectedColor?.strapHex || '#1E293B' }}
++            />
++          </div>
++
++          {/* Quick "Try in 3D" Floating Pill on hover */}
++          <button
++            type="button"
++            onClick={handleTryIn3D}
++            className="absolute bottom-3 right-3 px-3 py-1.5 rounded-full bg-white/90 backdrop-blur-md border border-purple-200/80 text-purple-700 text-[11px] font-bold shadow-xs hover:bg-purple-600 hover:text-white transition-all flex items-center gap-1.5 z-20"
++            title="Preview in 360° 3D Studio"
++          >
++            <Box className="w-3.5 h-3.5" />
++            <span>Try in 3D</span>
++          </button>
++        </div>
++
++        {/* Title & Tagline */}
++        <div className="mt-4 space-y-1">
++          <div className="flex items-center justify-between">
++            <h3 className="font-extrabold text-base text-slate-900 group-hover:text-purple-700 transition-colors">
++              {product.name}
++            </h3>
++            <div className="flex items-center gap-1 text-xs text-amber-500 font-semibold">
++              <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
++              <span>{product.rating}</span>
++              <span className="text-[11px] text-slate-400">({product.reviewsCount})</span>
++            </div>
++          </div>
++          <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">
++            {product.tagline}
++          </p>
++        </div>
++
++        {/* Key Specs Pills */}
++        <div className="mt-4 flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
++          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100/80 border border-slate-200/60 font-medium">
++            <Eye className="w-3 h-3 text-purple-500 shrink-0" />
++            <span className="truncate max-w-[120px]">{product.specs.display}</span>
++          </span>
++          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100/80 border border-slate-200/60 font-medium">
++            <Battery className="w-3 h-3 text-emerald-500 shrink-0" />
++            <span>{product.specs.batteryLife}</span>
++          </span>
++          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100/80 border border-slate-200/60 font-medium">
++            <Droplets className="w-3 h-3 text-cyan-500 shrink-0" />
++            <span>{product.specs.waterResistance}</span>
++          </span>
++        </div>
++
++        {/* Colorway Swatches Selector */}
++        {product.colors && product.colors.length > 0 && (
++          <div className="mt-4 flex items-center justify-between">
++            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
++              {selectedColor?.name || 'Color'}
++            </span>
++            <div className="flex items-center gap-1.5">
++              {product.colors.map((color) => {
++                const isSelected = selectedColor?.id === color.id;
++                return (
++                  <button
++                    key={color.id}
++                    type="button"
++                    onClick={(e) => handleColorClick(e, color)}
++                    title={color.name}
++                    aria-label={color.name}
++                    className={`w-5 h-5 rounded-full border transition-all ${
++                      isSelected
++                        ? 'ring-2 ring-purple-600 ring-offset-2 scale-110'
++                        : 'border-slate-300 hover:scale-105'
++                    }`}
++                    style={{ backgroundColor: color.hex }}
++                  />
++                );
++              })}
++            </div>
++          </div>
++        )}
++      </div>
++
++      {/* Pricing & Cart Action Bar */}
++      <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between gap-3">
++        {/* Pricing Column */}
++        <div className="flex flex-col">
++          <div className="flex items-baseline gap-1.5">
++            <span className="text-lg font-black text-slate-900 tracking-tight">
++              {formatUSD(product.price)}
++            </span>
++            {hasDiscount && (
++              <span className="text-xs text-slate-400 line-through">
++                {formatUSD(product.originalPrice)}
++              </span>
++            )}
++          </div>
++          <span className="text-[10px] text-emerald-600 font-semibold">
++            {product.inStock ? 'In Stock • Ready to Ship' : 'Backorder'}
++          </span>
++        </div>
++
++        {/* Add to Cart CTA */}
++        <button
++          type="button"
++          onClick={handleAddToCart}
++          className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm ${
++            isAdded
++              ? 'bg-emerald-600 text-white'
++              : 'bg-purple-600 hover:bg-purple-700 text-white hover:shadow-purple-500/25 hover:shadow-md'
++          }`}
++          title="Add to Shopping Cart"
++        >
++          {isAdded ? (
++            <>
++              <Check className="w-4 h-4" />
++              <span>Added</span>
++            </>
++          ) : (
++            <>
++              <ShoppingBag className="w-4 h-4" />
++              <span>Add to Cart</span>
++            </>
++          )}
++        </button>
++      </div>
++    </div>
++  );
++}
++
++export default ProductCard;
+diff --git a/src/components/catalog/ProductDetailModal.jsx b/src/components/catalog/ProductDetailModal.jsx
+new file mode 100644
+index 0000000..7bcfd42
+--- /dev/null
++++ b/src/components/catalog/ProductDetailModal.jsx
+@@ -0,0 +1,403 @@
++/**
++ * Product Detail & 3D Interactive Comparison Modal Component
++ * Dedicated 3D Viewer, Deep-Dive Specifications Table, Color/Face Customizers & Add to Cart
++ * Smart Watch & Band Interactive 3D Showcase & E-Commerce Prototype
++ */
++
++import React, { useState, useEffect } from 'react';
++import {
++  X,
++  Star,
++  ShoppingBag,
++  Check,
++  ShieldCheck,
++  Battery,
++  Droplets,
++  Eye,
++  Activity,
++  Plus,
++  Minus,
++  Box,
++  Layers,
++  Sparkles,
++  Compass,
++} from 'lucide-react';
++import { WatchViewer3D } from '../3d/WatchViewer3D.jsx';
++import { Badge } from '../common/Badge.jsx';
++import { formatUSD } from '../../utils/formatters.js';
++import { WATCH_FACES } from '../../data/watchFaces.js';
++
++export function ProductDetailModal({
++  isOpen = false,
++  product = null,
++  initialColor = null,
++  onClose = () => {},
++  onAddToCart = () => {},
++  className = '',
++}) {
++  if (!isOpen || !product) return null;
++
++  const [selectedColor, setSelectedColor] = useState(
++    initialColor || (product.colors && product.colors.length > 0 ? product.colors[0] : null)
++  );
++  const [selectedFace, setSelectedFace] = useState(product.defaultWatchFace || 'minimal');
++  const [quantity, setQuantity] = useState(1);
++  const [isAdded, setIsAdded] = useState(false);
++
++  // Sync state if product or initialColor changes
++  useEffect(() => {
++    if (product) {
++      setSelectedColor(
++        initialColor || (product.colors && product.colors.length > 0 ? product.colors[0] : null)
++      );
++      setSelectedFace(product.defaultWatchFace || 'minimal');
++      setQuantity(1);
++    }
++  }, [product, initialColor]);
++
++  // Handle escape key
++  useEffect(() => {
++    const handleKeyDown = (e) => {
++      if (e.key === 'Escape') onClose();
++    };
++    window.addEventListener('keydown', handleKeyDown);
++    return () => window.removeEventListener('keydown', handleKeyDown);
++  }, [onClose]);
++
++  const hasDiscount = product.originalPrice && product.originalPrice > product.price;
++  const discountPercent = hasDiscount
++    ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
++    : 0;
++
++  const handleAddToCart = () => {
++    onAddToCart(product, selectedColor, selectedFace, quantity);
++    setIsAdded(true);
++    setTimeout(() => {
++      setIsAdded(false);
++    }, 1500);
++  };
++
++  const modelGeometry = product.preset3d?.geometry || product.category || 'watch';
++
++  return (
++    <div
++      role="dialog"
++      aria-modal="true"
++      aria-label={product.name}
++      className={`fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 md:p-6 animate-in fade-in duration-200 ${className}`}
++      onClick={onClose}
++    >
++      <div
++        onClick={(e) => e.stopPropagation()}
++        className="relative w-full max-w-5xl bg-white rounded-3xl md:rounded-[32px] shadow-2xl border border-purple-100/80 overflow-hidden flex flex-col my-auto max-h-[92vh]"
++      >
++        {/* Sticky Top Modal Header */}
++        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-white/90 backdrop-blur-md sticky top-0 z-20">
++          <div className="flex items-center gap-3">
++            <Badge category={product.category} tier={product.tier} variant="combined" size="sm" />
++            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider hidden sm:inline">
++              Deep-Dive Showcase
++            </span>
++          </div>
++
++          <button
++            type="button"
++            onClick={onClose}
++            aria-label="Close modal"
++            className="p-2 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all focus:outline-hidden"
++          >
++            <X className="w-5 h-5" />
++          </button>
++        </div>
++
++        {/* Modal Scrollable Body */}
++        <div className="overflow-y-auto p-6 md:p-8 space-y-8">
++          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
++            {/* Left Column: Dedicated 3D Viewer */}
++            <div className="lg:col-span-7 space-y-4">
++              <div className="rounded-3xl overflow-hidden border border-purple-100 bg-gradient-to-b from-[#F5F2FF] to-[#FAF8FF] p-2 relative shadow-inner">
++                <WatchViewer3D
++                  modelType={modelGeometry}
++                  tier={product.tier}
++                  color={selectedColor}
++                  activeFace={selectedFace}
++                  onColorChange={setSelectedColor}
++                  onFaceChange={setSelectedFace}
++                  showControls={false}
++                  className="h-[380px] sm:h-[440px] md:h-[480px] rounded-2xl"
++                />
++
++                <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between pointer-events-none">
++                  <span className="px-3 py-1 rounded-full bg-white/80 backdrop-blur-md border border-white/60 text-[11px] font-semibold text-slate-700 shadow-xs flex items-center gap-1.5 pointer-events-auto">
++                    <Compass className="w-3.5 h-3.5 text-purple-600" />
++                    <span>360° Live Procedural Model</span>
++                  </span>
++                </div>
++              </div>
++
++              {/* Watch Face Quick Customizer */}
++              <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/60 space-y-2.5">
++                <div className="flex items-center justify-between">
++                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
++                    <Sparkles className="w-3.5 h-3.5 text-purple-600" />
++                    <span>Select Dynamic Watch Face</span>
++                  </span>
++                  <span className="text-[11px] font-semibold text-purple-700 capitalize">
++                    {selectedFace} Face
++                  </span>
++                </div>
++                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
++                  {WATCH_FACES.map((face) => {
++                    const isFaceSelected = selectedFace === face.id;
++                    return (
++                      <button
++                        key={face.id}
++                        type="button"
++                        onClick={() => setSelectedFace(face.id)}
++                        className={`p-2.5 rounded-xl border text-left transition-all ${
++                          isFaceSelected
++                            ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
++                            : 'bg-white text-slate-700 border-slate-200 hover:border-purple-200'
++                        }`}
++                      >
++                        <div className="text-xs font-bold">{face.name}</div>
++                        <div className={`text-[10px] truncate ${isFaceSelected ? 'text-purple-200' : 'text-slate-400'}`}>
++                          {face.tagline}
++                        </div>
++                      </button>
++                    );
++                  })}
++                </div>
++              </div>
++            </div>
++
++            {/* Right Column: Title, Colorways, Pricing, Add to Cart */}
++            <div className="lg:col-span-5 space-y-6">
++              {/* Product Info */}
++              <div className="space-y-2">
++                <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
++                  {product.name}
++                </h1>
++                <p className="text-xs sm:text-sm font-medium text-purple-700 leading-snug">
++                  {product.tagline}
++                </p>
++                <div className="flex items-center gap-2 pt-1 text-xs">
++                  <div className="flex items-center gap-0.5 text-amber-500">
++                    {[...Array(5)].map((_, i) => (
++                      <Star
++                        key={i}
++                        className={`w-3.5 h-3.5 ${
++                          i < Math.floor(product.rating)
++                            ? 'fill-amber-400 text-amber-400'
++                            : 'text-slate-200 fill-slate-100'
++                        }`}
++                      />
++                    ))}
++                  </div>
++                  <span className="font-bold text-slate-800">{product.rating}</span>
++                  <span className="text-slate-400">({product.reviewsCount} customer reviews)</span>
++                </div>
++              </div>
++
++              {/* Description */}
++              <p className="text-xs text-slate-600 leading-relaxed">
++                {product.description}
++              </p>
++
++              {/* Color Customizer */}
++              <div className="space-y-2 pt-2 border-t border-slate-100">
++                <div className="flex items-center justify-between text-xs">
++                  <span className="font-bold text-slate-700 uppercase tracking-wider">
++                    Colorway
++                  </span>
++                  <span className="font-semibold text-slate-900">
++                    {selectedColor?.name || 'Default'}
++                  </span>
++                </div>
++                <div className="flex items-center gap-2.5">
++                  {product.colors.map((c) => {
++                    const isSelected = selectedColor?.id === c.id;
++                    return (
++                      <button
++                        key={c.id}
++                        type="button"
++                        onClick={() => setSelectedColor(c)}
++                        title={c.name}
++                        className={`w-7 h-7 rounded-full border transition-all ${
++                          isSelected
++                            ? 'ring-2 ring-purple-600 ring-offset-2 scale-110 shadow-sm'
++                            : 'border-slate-300 hover:scale-105'
++                        }`}
++                        style={{ backgroundColor: c.hex }}
++                      />
++                    );
++                  })}
++                </div>
++              </div>
++
++              {/* Pricing & Stock Status */}
++              <div className="p-4 rounded-2xl bg-purple-50/50 border border-purple-100 space-y-3">
++                <div className="flex items-baseline justify-between">
++                  <div className="flex items-baseline gap-2">
++                    <span className="text-2xl font-black text-slate-900">
++                      {formatUSD(product.price)}
++                    </span>
++                    {hasDiscount && (
++                      <span className="text-sm text-slate-400 line-through">
++                        {formatUSD(product.originalPrice)}
++                      </span>
++                    )}
++                  </div>
++                  {hasDiscount && (
++                    <span className="text-xs font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
++                      Save {discountPercent}%
++                    </span>
++                  )}
++                </div>
++
++                <div className="flex items-center justify-between text-xs pt-1">
++                  <span className="text-emerald-700 font-semibold flex items-center gap-1.5">
++                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
++                    <span>In Stock • Dispatches in 24h</span>
++                  </span>
++                  <span className="text-slate-500 font-medium">Free Expedited Shipping</span>
++                </div>
++              </div>
++
++              {/* Quantity & Add to Cart Controls */}
++              <div className="space-y-3">
++                <div className="flex items-center gap-3">
++                  {/* Quantity Modifier */}
++                  <div className="flex items-center bg-slate-100 rounded-2xl p-1 border border-slate-200">
++                    <button
++                      type="button"
++                      onClick={() => setQuantity((q) => Math.max(1, q - 1))}
++                      className="p-2 text-slate-600 hover:text-slate-900 rounded-xl hover:bg-white transition-all"
++                      title="Decrease quantity"
++                    >
++                      <Minus className="w-3.5 h-3.5" />
++                    </button>
++                    <span className="w-8 text-center text-xs font-bold text-slate-800">
++                      {quantity}
++                    </span>
++                    <button
++                      type="button"
++                      onClick={() => setQuantity((q) => q + 1)}
++                      className="p-2 text-slate-600 hover:text-slate-900 rounded-xl hover:bg-white transition-all"
++                      title="Increase quantity"
++                    >
++                      <Plus className="w-3.5 h-3.5" />
++                    </button>
++                  </div>
++
++                  {/* Add to Cart CTA */}
++                  <button
++                    type="button"
++                    onClick={handleAddToCart}
++                    className={`flex-1 py-3 px-6 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-md ${
++                      isAdded
++                        ? 'bg-emerald-600 text-white'
++                        : 'bg-purple-600 hover:bg-purple-700 text-white shadow-purple-500/25'
++                    }`}
++                  >
++                    {isAdded ? (
++                      <>
++                        <Check className="w-4 h-4" />
++                        <span>Added to Cart ({quantity})</span>
++                      </>
++                    ) : (
++                      <>
++                        <ShoppingBag className="w-4 h-4" />
++                        <span>Add to Cart • {formatUSD(product.price * quantity)}</span>
++                      </>
++                    )}
++                  </button>
++                </div>
++              </div>
++            </div>
++          </div>
++
++          {/* Deep-Dive Technical Specifications Table */}
++          <div className="pt-8 border-t border-slate-100 space-y-6">
++            <div className="flex items-center justify-between">
++              <h2 className="text-base md:text-lg font-extrabold text-slate-900 flex items-center gap-2">
++                <Layers className="w-5 h-5 text-purple-600" />
++                <span>Technical Specifications</span>
++              </h2>
++              <span className="text-xs text-slate-500 font-medium">
++                Verified Procedural Hardware Profile
++              </span>
++            </div>
++
++            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
++              {/* Specs Table */}
++              <div className="bg-slate-50/70 rounded-2xl p-4 border border-slate-200/60 divide-y divide-slate-100 text-xs">
++                <div className="flex items-center justify-between py-2.5">
++                  <span className="text-slate-500 font-medium">Display</span>
++                  <span className="text-slate-900 font-bold text-right">{product.specs.display}</span>
++                </div>
++                <div className="flex items-center justify-between py-2.5">
++                  <span className="text-slate-500 font-medium">Battery Endurance</span>
++                  <span className="text-slate-900 font-bold text-right">{product.specs.batteryLife}</span>
++                </div>
++                <div className="flex items-center justify-between py-2.5">
++                  <span className="text-slate-500 font-medium">Water Resistance</span>
++                  <span className="text-slate-900 font-bold text-right">{product.specs.waterResistance}</span>
++                </div>
++                <div className="flex items-center justify-between py-2.5">
++                  <span className="text-slate-500 font-medium">Weight</span>
++                  <span className="text-slate-900 font-bold text-right">{product.specs.weight}</span>
++                </div>
++                <div className="flex items-center justify-between py-2.5">
++                  <span className="text-slate-500 font-medium">Connectivity</span>
++                  <span className="text-slate-900 font-bold text-right">{product.specs.connectivity}</span>
++                </div>
++                <div className="flex items-center justify-between py-2.5">
++                  <span className="text-slate-500 font-medium">Casing Material</span>
++                  <span className="text-slate-900 font-bold text-right">{product.specs.casingMaterial}</span>
++                </div>
++              </div>
++
++              {/* Sensors & Highlights List */}
++              <div className="space-y-4">
++                <div className="p-4 rounded-2xl bg-purple-50/50 border border-purple-100 space-y-2">
++                  <h3 className="text-xs font-bold uppercase tracking-wider text-purple-900 flex items-center gap-1.5">
++                    <Activity className="w-3.5 h-3.5 text-purple-600" />
++                    <span>Integrated Sensor Array</span>
++                  </h3>
++                  <div className="flex flex-wrap gap-1.5">
++                    {product.specs.sensors.map((sensor, idx) => (
++                      <span
++                        key={idx}
++                        className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-white border border-purple-200/70 text-slate-700 shadow-2xs"
++                      >
++                        {sensor}
++                      </span>
++                    ))}
++                  </div>
++                </div>
++
++                <div className="p-4 rounded-2xl bg-cyan-50/40 border border-cyan-100 space-y-2">
++                  <h3 className="text-xs font-bold uppercase tracking-wider text-cyan-900 flex items-center gap-1.5">
++                    <Sparkles className="w-3.5 h-3.5 text-cyan-600" />
++                    <span>Signature Features</span>
++                  </h3>
++                  <ul className="space-y-1 text-xs text-slate-600">
++                    {product.features.map((feature, idx) => (
++                      <li key={idx} className="flex items-center gap-2">
++                        <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
++                        <span>{feature}</span>
++                      </li>
++                    ))}
++                  </ul>
++                </div>
++              </div>
++            </div>
++          </div>
++        </div>
++      </div>
++    </div>
++  );
++}
++
++export default ProductDetailModal;
+diff --git a/src/components/catalog/ProductFilter.jsx b/src/components/catalog/ProductFilter.jsx
+new file mode 100644
+index 0000000..f798720
+--- /dev/null
++++ b/src/components/catalog/ProductFilter.jsx
+@@ -0,0 +1,179 @@
++/**
++ * Reactive Segmented Filter Component for Categories & Tiers
++ * Filter by All, Smart Bands, Smart Watches and Tiers (Standard, Pro, Pro Max)
++ * Smart Watch & Band Interactive 3D Showcase & E-Commerce Prototype
++ */
++
++import React from 'react';
++import { Filter, SlidersHorizontal, Search, RotateCcw, Activity, Watch } from 'lucide-react';
++import { TIERS, TIER_LABELS } from '../../data/products.js';
++
++export function ProductFilter({
++  activeCategory = 'all',
++  onCategoryChange = () => {},
++  activeTier = 'all',
++  onTierChange = () => {},
++  searchQuery = '',
++  onSearchChange = () => {},
++  activeSort = 'featured',
++  onSortChange = () => {},
++  totalCount,
++  onResetFilters,
++  className = '',
++}) {
++  const categories = [
++    { id: 'all', label: 'All Products' },
++    { id: 'band', label: 'Smart Bands' },
++    { id: 'watch', label: 'Smart Watches' },
++  ];
++
++  // Derive available tiers based on selected category
++  const availableTiers = React.useMemo(() => {
++    let tierKeys = [];
++    if (activeCategory === 'band') {
++      tierKeys = TIERS.band; // ['standard', 'pro']
++    } else if (activeCategory === 'watch') {
++      tierKeys = TIERS.watch; // ['standard', 'pro', 'pro_max']
++    } else {
++      // All
++      tierKeys = ['standard', 'pro', 'pro_max'];
++    }
++
++    return [
++      { id: 'all', label: 'All Tiers' },
++      ...tierKeys.map((k) => ({
++        id: k,
++        label: TIER_LABELS[k] || k,
++      })),
++    ];
++  }, [activeCategory]);
++
++  const handleCategorySelect = (catId) => {
++    onCategoryChange(catId);
++    // If switching to band and active tier is pro_max, fallback to 'all'
++    if (catId === 'band' && activeTier === 'pro_max') {
++      onTierChange('all');
++    }
++  };
++
++  const isFiltered = activeCategory !== 'all' || activeTier !== 'all' || (searchQuery && searchQuery.trim() !== '');
++
++  const handleReset = () => {
++    if (onResetFilters) {
++      onResetFilters();
++    } else {
++      onCategoryChange('all');
++      onTierChange('all');
++      if (onSearchChange) onSearchChange('');
++    }
++  };
++
++  return (
++    <div
++      className={`bg-white/80 backdrop-blur-md rounded-3xl p-4 md:p-6 border border-purple-100 shadow-xs space-y-4 ${className}`}
++      data-testid="product-filter"
++    >
++      {/* Top Filter Controls: Category Segmented Bar & Search */}
++      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
++        {/* Category Segmented Control */}
++        <div className="flex items-center gap-1.5 p-1 bg-slate-100/80 rounded-2xl border border-slate-200/60 overflow-x-auto no-scrollbar">
++          {categories.map((cat) => {
++            const isActive = activeCategory === cat.id;
++            return (
++              <button
++                key={cat.id}
++                type="button"
++                onClick={() => handleCategorySelect(cat.id)}
++                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
++                  isActive
++                    ? 'bg-purple-600 text-white shadow-xs'
++                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
++                }`}
++              >
++                <span>{cat.label}</span>
++              </button>
++            );
++          })}
++        </div>
++
++        {/* Search & Sort Controls */}
++        <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
++          {/* Quick Search Input */}
++          <div className="relative flex-1 sm:w-60">
++            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
++            <input
++              type="text"
++              value={searchQuery}
++              onChange={(e) => onSearchChange(e.target.value)}
++              placeholder="Filter by keyword..."
++              className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-purple-300 focus:outline-hidden transition-all text-slate-800"
++            />
++          </div>
++
++          {/* Sort Selector */}
++          <div className="relative shrink-0">
++            <select
++              value={activeSort}
++              onChange={(e) => onSortChange(e.target.value)}
++              className="appearance-none bg-slate-50 border border-slate-200 text-slate-700 text-xs font-medium py-2 pl-3 pr-8 rounded-xl focus:outline-hidden focus:border-purple-300 transition-all cursor-pointer"
++            >
++              <option value="featured">Featured First</option>
++              <option value="price-asc">Price: Low to High</option>
++              <option value="price-desc">Price: High to Low</option>
++              <option value="rating">Top Rated</option>
++            </select>
++            <SlidersHorizontal className="w-3 h-3 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
++          </div>
++
++          {/* Reset Filters Button */}
++          {isFiltered && (
++            <button
++              type="button"
++              onClick={handleReset}
++              title="Reset all active filters"
++              className="p-2 text-slate-500 hover:text-purple-600 hover:bg-purple-50 rounded-xl border border-slate-200 transition-all shrink-0 flex items-center gap-1 text-xs"
++            >
++              <RotateCcw className="w-3.5 h-3.5" />
++              <span className="hidden sm:inline">Reset</span>
++            </button>
++          )}
++        </div>
++      </div>
++
++      {/* Tier Segmented Pills Bar */}
++      <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
++        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5">
++          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 shrink-0 mr-1 flex items-center gap-1">
++            <Filter className="w-3 h-3 text-slate-400" />
++            <span>Tier:</span>
++          </span>
++          {availableTiers.map((t) => {
++            const isActive = activeTier === t.id;
++            return (
++              <button
++                key={t.id}
++                type="button"
++                onClick={() => onTierChange(t.id)}
++                className={`px-3 py-1 rounded-full text-xs font-semibold transition-all shrink-0 ${
++                  isActive
++                    ? 'bg-slate-900 text-white shadow-xs'
++                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200/80 hover:text-slate-900'
++                }`}
++              >
++                {t.label}
++              </button>
++            );
++          })}
++        </div>
++
++        {typeof totalCount === 'number' && (
++          <span className="text-xs text-slate-500 font-medium">
++            Showing <strong className="text-slate-900 font-semibold">{totalCount}</strong> wearables
++          </span>
++        )}
++      </div>
++    </div>
++  );
++}
++
++export default ProductFilter;
+diff --git a/src/components/catalog/ProductGrid.jsx b/src/components/catalog/ProductGrid.jsx
+new file mode 100644
+index 0000000..c396950
+--- /dev/null
++++ b/src/components/catalog/ProductGrid.jsx
+@@ -0,0 +1,77 @@
++/**
++ * Responsive Product Catalog Grid Component
++ * Renders Product Cards, Count Summary, and Filter Empty State
++ * Smart Watch & Band Interactive 3D Showcase & E-Commerce Prototype
++ */
++
++import React from 'react';
++import { Sparkles, RotateCcw, Box } from 'lucide-react';
++import { ProductCard } from './ProductCard.jsx';
++
++export function ProductGrid({
++  products = [],
++  onAddToCart = () => {},
++  onTryIn3D = () => {},
++  onSelectProduct = () => {},
++  onResetFilters = () => {},
++  className = '',
++}) {
++  const count = products.length;
++
++  return (
++    <div className={`space-y-6 ${className}`} data-testid="product-grid">
++      {/* Product Grid Header / Count */}
++      <div className="flex items-center justify-between">
++        <h2 className="text-lg md:text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
++          <span>Wearable Collection</span>
++          <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-700">
++            {count}
++          </span>
++        </h2>
++        <span className="text-xs text-slate-500 font-medium">
++          {`Showing ${count} ${count === 1 ? 'Wearable' : 'Wearables'}`}
++        </span>
++      </div>
++
++      {/* When Empty */}
++      {count === 0 ? (
++        <div className="py-20 px-6 rounded-3xl bg-white/70 backdrop-blur-md border border-purple-100 text-center max-w-lg mx-auto space-y-4">
++          <div className="w-14 h-14 rounded-2xl bg-purple-100 text-purple-600 mx-auto flex items-center justify-center">
++            <Box className="w-7 h-7" />
++          </div>
++          <div className="space-y-1">
++            <h3 className="font-extrabold text-slate-800 text-base">
++              No wearables found
++            </h3>
++            <p className="text-xs text-slate-500 max-w-xs mx-auto">
++              We couldn't find any products matching your active category, tier, or search query.
++            </p>
++          </div>
++          <button
++            type="button"
++            onClick={onResetFilters}
++            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition-all shadow-sm"
++          >
++            <RotateCcw className="w-3.5 h-3.5" />
++            <span>Reset Filters</span>
++          </button>
++        </div>
++      ) : (
++        /* Responsive Grid */
++        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
++          {products.map((product) => (
++            <ProductCard
++              key={product.id}
++              product={product}
++              onAddToCart={onAddToCart}
++              onTryIn3D={onTryIn3D}
++              onSelectProduct={onSelectProduct}
++            />
++          ))}
++        </div>
++      )}
++    </div>
++  );
++}
++
++export default ProductGrid;
+diff --git a/src/components/common/Badge.jsx b/src/components/common/Badge.jsx
+new file mode 100644
+index 0000000..5fd2970
+--- /dev/null
++++ b/src/components/common/Badge.jsx
+@@ -0,0 +1,67 @@
++/**
++ * Reusable Badge Component for Wearable Categories, Tiers, and Status Indicators
++ * Smart Watch & Band Interactive 3D Showcase & E-Commerce Prototype
++ */
++
++import React from 'react';
++import { TIER_LABELS } from '../../data/products.js';
++
++export function Badge({
++  category,
++  tier,
++  variant = 'combined',
++  size = 'sm',
++  children,
++  className = '',
++}) {
++  const sizeClasses = {
++    sm: 'text-[10px] px-2 py-0.5 tracking-wider',
++    md: 'text-xs px-2.5 py-1 tracking-wide',
++    lg: 'text-sm px-3.5 py-1.5 tracking-normal',
++  };
++
++  const getTierTheme = (t) => {
++    switch (t) {
++      case 'pro_max':
++        return 'bg-gradient-to-r from-purple-100 via-purple-50 to-indigo-100 text-purple-900 border-purple-300/80 shadow-xs';
++      case 'pro':
++        return 'bg-cyan-50 text-cyan-900 border-cyan-200/90';
++      case 'standard':
++      default:
++        return 'bg-slate-100 text-slate-700 border-slate-200';
++    }
++  };
++
++  let content = children;
++  let variantClasses = '';
++
++  if (variant === 'category') {
++    content = children || (category === 'band' ? 'Smart Band' : 'Smart Watch');
++    variantClasses = 'bg-purple-50 text-purple-800 border-purple-200/70 font-semibold';
++  } else if (variant === 'tier') {
++    const label = TIER_LABELS[tier] || tier || 'Standard';
++    content = children || label;
++    variantClasses = `${getTierTheme(tier)} font-semibold`;
++  } else if (variant === 'combined') {
++    const catLabel = category === 'band' ? 'BAND' : category === 'watch' ? 'WATCH' : (category || '').toUpperCase();
++    const tierLabel = (TIER_LABELS[tier] || tier || 'STANDARD').toUpperCase();
++    content = children || `${catLabel} • ${tierLabel}`;
++    variantClasses = `${getTierTheme(tier)} font-bold`;
++  } else if (variant === 'sale') {
++    variantClasses = 'bg-rose-50 text-rose-700 border-rose-200 font-bold';
++  } else if (variant === 'status') {
++    variantClasses = 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-transparent font-semibold shadow-xs';
++  } else {
++    variantClasses = 'bg-white/80 text-slate-700 border-slate-200 font-medium';
++  }
++
++  return (
++    <span
++      className={`inline-flex items-center justify-center font-medium uppercase rounded-full border transition-all ${sizeClasses[size] || sizeClasses.sm} ${variantClasses} ${className}`}
++    >
++      {content}
++    </span>
++  );
++}
++
++export default Badge;
+diff --git a/src/components/common/Footer.jsx b/src/components/common/Footer.jsx
+new file mode 100644
+index 0000000..7989366
+--- /dev/null
++++ b/src/components/common/Footer.jsx
+@@ -0,0 +1,145 @@
++/**
++ * Minimalist Brand Footer Component
++ * Guarantees, Value Pillars, Navigation Links, and Copyright
++ * Smart Watch & Band Interactive 3D Showcase & E-Commerce Prototype
++ */
++
++import React from 'react';
++import { Sparkles, ShieldCheck, RotateCcw, Truck, Headphones, Heart } from 'lucide-react';
++
++export function Footer({ className = '' }) {
++  const guarantees = [
++    {
++      icon: RotateCcw,
++      title: '30-Day Returns',
++      description: 'Hassle-free 100% money-back guarantee with prepaid return labels.',
++    },
++    {
++      icon: ShieldCheck,
++      title: '2-Year Official Warranty',
++      description: 'Comprehensive hardware protection covering materials & craftsmanship.',
++    },
++    {
++      icon: Truck,
++      title: 'Worldwide Fast Dispatch',
++      description: 'Expedited carbon-neutral delivery straight from our procedural facility.',
++    },
++    {
++      icon: Headphones,
++      title: '24/7 Dedicated Support',
++      description: 'Wearable tech specialists standing by for real-time customer care.',
++    },
++  ];
++
++  return (
++    <footer
++      className={`bg-white border-t border-purple-100/80 pt-16 pb-12 transition-all ${className}`}
++      data-testid="main-footer"
++    >
++      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
++        {/* Value Guarantees Banner */}
++        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 pb-12 border-b border-slate-100">
++          {guarantees.map((item, index) => {
++            const Icon = item.icon;
++            return (
++              <div
++                key={index}
++                className="flex items-start gap-3.5 p-4 rounded-2xl bg-slate-50/60 border border-slate-100 hover:border-purple-200 hover:bg-purple-50/30 transition-all"
++              >
++                <div className="w-10 h-10 rounded-xl bg-purple-100/80 text-purple-700 flex items-center justify-center shrink-0">
++                  <Icon className="w-5 h-5" />
++                </div>
++                <div>
++                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
++                    {item.title}
++                  </h4>
++                  <p className="text-[12px] text-slate-500 mt-0.5 leading-snug">
++                    {item.description}
++                  </p>
++                </div>
++              </div>
++            );
++          })}
++        </div>
++
++        {/* Brand & Links Grid */}
++        <div className="grid grid-cols-1 md:grid-cols-12 gap-8 py-12 border-b border-slate-100">
++          {/* Brand Info */}
++          <div className="md:col-span-5 space-y-4">
++            <div className="flex items-center gap-2.5">
++              <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-purple-600 via-indigo-600 to-cyan-500 flex items-center justify-center text-white shadow-xs">
++                <Sparkles className="w-4 h-4" />
++              </div>
++              <span className="font-extrabold text-base tracking-tight text-slate-900">
++                NOVA WEARABLES
++              </span>
++            </div>
++            <p className="text-xs text-slate-500 leading-relaxed max-w-sm">
++              Engineering the next frontier of intelligent biometric wearables. Powered by
++              procedural 3D simulation, medical-grade sensor precision, and sustainable artisan
++              craftsmanship.
++            </p>
++            <div className="flex items-center gap-2 text-xs text-slate-600 font-medium">
++              <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
++              <span>Procedural 3D Engine v2.4 Live</span>
++            </div>
++          </div>
++
++          {/* Quick Links Column 1 */}
++          <div className="md:col-span-2 space-y-3">
++            <h5 className="text-xs font-bold uppercase tracking-wider text-slate-900">
++              Wearable Models
++            </h5>
++            <ul className="space-y-2 text-xs text-slate-500">
++              <li><a href="#catalog" className="hover:text-purple-600 transition-colors">NovaBand Flow</a></li>
++              <li><a href="#catalog" className="hover:text-purple-600 transition-colors">NovaBand Pro Elite</a></li>
++              <li><a href="#catalog" className="hover:text-purple-600 transition-colors">NovaWatch Core</a></li>
++              <li><a href="#catalog" className="hover:text-purple-600 transition-colors">NovaWatch Pro</a></li>
++              <li><a href="#catalog" className="hover:text-purple-600 transition-colors">NovaWatch Pro Max Ultra</a></li>
++            </ul>
++          </div>
++
++          {/* Quick Links Column 2 */}
++          <div className="md:col-span-2 space-y-3">
++            <h5 className="text-xs font-bold uppercase tracking-wider text-slate-900">
++              Technology
++            </h5>
++            <ul className="space-y-2 text-xs text-slate-500">
++              <li><span className="hover:text-purple-600 transition-colors cursor-pointer">Procedural WebGL</span></li>
++              <li><span className="hover:text-purple-600 transition-colors cursor-pointer">Dynamic Canvas Face</span></li>
++              <li><span className="hover:text-purple-600 transition-colors cursor-pointer">Biometric Widgets</span></li>
++              <li><span className="hover:text-purple-600 transition-colors cursor-pointer">Sapphire Crystal</span></li>
++              <li><span className="hover:text-purple-600 transition-colors cursor-pointer">Grade 5 Titanium</span></li>
++            </ul>
++          </div>
++
++          {/* Quick Links Column 3 */}
++          <div className="md:col-span-3 space-y-3">
++            <h5 className="text-xs font-bold uppercase tracking-wider text-slate-900">
++              Support & Care
++            </h5>
++            <ul className="space-y-2 text-xs text-slate-500">
++              <li><span className="hover:text-purple-600 transition-colors cursor-pointer">Product Documentation</span></li>
++              <li><span className="hover:text-purple-600 transition-colors cursor-pointer">Warranty Verification</span></li>
++              <li><span className="hover:text-purple-600 transition-colors cursor-pointer">Shipping & Dispatch FAQ</span></li>
++              <li><span className="hover:text-purple-600 transition-colors cursor-pointer">Privacy & Data Security</span></li>
++              <li><span className="hover:text-purple-600 transition-colors cursor-pointer">Contact Specialists</span></li>
++            </ul>
++          </div>
++        </div>
++
++        {/* Bottom Bar: Copyright */}
++        <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400">
++          <p>© 2026 NOVA WEARABLES Inc. All rights reserved.</p>
++          <div className="flex items-center gap-1 text-[11px] text-slate-500">
++            <span>Crafted with</span>
++            <Heart className="w-3.5 h-3.5 text-purple-500 fill-purple-500" />
++            <span>for wearable enthusiasts worldwide.</span>
++          </div>
++        </div>
++      </div>
++    </footer>
++  );
++}
++
++export default Footer;
+diff --git a/src/components/common/Header.jsx b/src/components/common/Header.jsx
+new file mode 100644
+index 0000000..8410533
+--- /dev/null
++++ b/src/components/common/Header.jsx
+@@ -0,0 +1,185 @@
++/**
++ * Sticky Glassmorphic Navigation Header Component
++ * Brand Identity, Category Navigation, Search Trigger, and Animated Cart Drawer Toggle
++ * Smart Watch & Band Interactive 3D Showcase & E-Commerce Prototype
++ */
++
++import React, { useState } from 'react';
++import { ShoppingBag, Search, Sparkles, Menu, X, Compass } from 'lucide-react';
++import { CATEGORIES } from '../../data/products.js';
++
++export function Header({
++  activeCategory = 'all',
++  onSelectCategory = () => {},
++  cartCount = 0,
++  onOpenCart = () => {},
++  searchQuery = '',
++  onSearchChange = () => {},
++  onStudioClick = () => {},
++  className = '',
++}) {
++  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
++  const [isSearchExpanded, setIsSearchExpanded] = useState(false);
++
++  const navCategories = [
++    { id: 'all', label: 'All Products' },
++    { id: 'band', label: 'Smart Bands' },
++    { id: 'watch', label: 'Smart Watches' },
++  ];
++
++  const handleNavClick = (catId) => {
++    onSelectCategory(catId);
++    setIsMobileMenuOpen(false);
++  };
++
++  return (
++    <header
++      className={`sticky top-0 z-40 w-full glass-header backdrop-blur-md bg-white/85 border-b border-purple-100/70 shadow-xs transition-all ${className}`}
++      data-testid="main-header"
++    >
++      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
++        <div className="flex items-center justify-between h-16 md:h-20 gap-4">
++          {/* Brand Logo & Name */}
++          <div className="flex items-center gap-3">
++            <button
++              type="button"
++              onClick={() => handleNavClick('all')}
++              className="flex items-center gap-2.5 text-left group focus:outline-hidden"
++              title="NOVA WEARABLES Home"
++            >
++              <div className="w-9 h-9 md:w-10 md:h-10 rounded-xl bg-gradient-to-tr from-purple-600 via-indigo-600 to-cyan-500 flex items-center justify-center text-white shadow-md shadow-purple-500/20 group-hover:scale-105 transition-transform">
++                <Sparkles className="w-5 h-5" />
++              </div>
++              <div className="flex flex-col">
++                <span className="font-extrabold text-base md:text-lg tracking-tight text-slate-900 group-hover:text-purple-600 transition-colors">
++                  NOVA WEARABLES
++                </span>
++                <span className="text-[10px] uppercase tracking-widest text-slate-500 font-medium">
++                  Procedural Studio
++                </span>
++              </div>
++            </button>
++          </div>
++
++          {/* Desktop Category Navigation */}
++          <nav className="hidden md:flex items-center gap-1.5 bg-slate-100/70 p-1 rounded-full border border-slate-200/60">
++            {navCategories.map((cat) => {
++              const isActive = activeCategory === cat.id;
++              return (
++                <button
++                  key={cat.id}
++                  type="button"
++                  onClick={() => handleNavClick(cat.id)}
++                  className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${
++                    isActive
++                      ? 'bg-purple-600 text-white shadow-sm'
++                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
++                  }`}
++                >
++                  {cat.label}
++                </button>
++              );
++            })}
++          </nav>
++
++          {/* Right Action Icons: Search & Cart & Mobile Toggle */}
++          <div className="flex items-center gap-2.5">
++            {/* Search Input / Trigger */}
++            <div className="relative flex items-center">
++              {isSearchExpanded ? (
++                <div className="flex items-center bg-white rounded-full border border-purple-200 shadow-xs px-3 py-1.5 gap-2 transition-all w-48 sm:w-64">
++                  <Search className="w-4 h-4 text-slate-400 shrink-0" />
++                  <input
++                    type="text"
++                    value={searchQuery}
++                    onChange={(e) => onSearchChange(e.target.value)}
++                    placeholder="Search wearables..."
++                    className="w-full text-xs text-slate-800 bg-transparent focus:outline-hidden"
++                    autoFocus
++                  />
++                  <button
++                    type="button"
++                    onClick={() => {
++                      setIsSearchExpanded(false);
++                      onSearchChange('');
++                    }}
++                    className="text-slate-400 hover:text-slate-600 p-0.5"
++                    title="Close Search"
++                  >
++                    <X className="w-3.5 h-3.5" />
++                  </button>
++                </div>
++              ) : (
++                <button
++                  type="button"
++                  onClick={() => setIsSearchExpanded(true)}
++                  aria-label="Search"
++                  title="Search wearables"
++                  className="flex items-center gap-2 px-3 py-2 text-slate-600 hover:text-purple-600 hover:bg-purple-50/70 rounded-full transition-all text-xs font-medium"
++                >
++                  <Search className="w-4 h-4" />
++                  <span className="hidden sm:inline">Search</span>
++                </button>
++              )}
++            </div>
++
++            {/* Cart Drawer Trigger Button */}
++            <button
++              type="button"
++              onClick={onOpenCart}
++              aria-label="Shopping Cart"
++              className="relative flex items-center justify-center p-2.5 text-slate-700 hover:text-purple-600 hover:bg-purple-50/70 rounded-full transition-all focus:outline-hidden"
++              title="View Cart Drawer"
++            >
++              <ShoppingBag className="w-5 h-5" />
++              {cartCount > 0 && (
++                <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1.5 rounded-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-[11px] font-bold flex items-center justify-center shadow-xs animate-in zoom-in-75">
++                  {cartCount}
++                </span>
++              )}
++            </button>
++
++            {/* Mobile Menu Toggle */}
++            <button
++              type="button"
++              onClick={() => setIsMobileMenuOpen((prev) => !prev)}
++              aria-label="Toggle Navigation Menu"
++              className="md:hidden p-2 text-slate-700 hover:text-purple-600 hover:bg-purple-50/70 rounded-xl transition-all"
++            >
++              {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
++            </button>
++          </div>
++        </div>
++      </div>
++
++      {/* Mobile Navigation Dropdown */}
++      {isMobileMenuOpen && (
++        <div className="md:hidden glass-dropdown border-t border-purple-100 px-4 py-4 space-y-2">
++          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 px-2 pb-1">
++            Browse Wearables
++          </div>
++          {navCategories.map((cat) => {
++            const isActive = activeCategory === cat.id;
++            return (
++              <button
++                key={cat.id}
++                type="button"
++                onClick={() => handleNavClick(cat.id)}
++                className={`w-full text-left px-3 py-2 rounded-xl text-sm font-semibold transition-all flex items-center justify-between ${
++                  isActive
++                    ? 'bg-purple-600 text-white'
++                    : 'text-slate-700 hover:bg-purple-50'
++                }`}
++              >
++                <span>{cat.label}</span>
++                {isActive && <span className="w-2 h-2 rounded-full bg-cyan-300" />}
++              </button>
++            );
++          })}
++        </div>
++      )}
++    </header>
++  );
++}
++
++export default Header;
+diff --git a/src/components/hero/HeroSection.jsx b/src/components/hero/HeroSection.jsx
+new file mode 100644
+index 0000000..fb45641
+--- /dev/null
++++ b/src/components/hero/HeroSection.jsx
+@@ -0,0 +1,147 @@
++/**
++ * Hero 3D Showcase Section Component
++ * Embeds Interactive WatchViewer3D Studio, CTA Badges, Live Specs Highlights & Actions
++ * Smart Watch & Band Interactive 3D Showcase & E-Commerce Prototype
++ */
++
++import React, { useState } from 'react';
++import {
++  Sparkles,
++  ArrowRight,
++  Compass,
++  Layers,
++  Battery,
++  Shield,
++  Zap,
++  Activity,
++  Box,
++} from 'lucide-react';
++import { WatchViewer3D } from '../3d/WatchViewer3D.jsx';
++import { COLORWAYS } from '../3d/ViewerControls.jsx';
++
++export function HeroSection({
++  onExploreClick = () => {
++    const el = document.getElementById('catalog');
++    if (el) el.scrollIntoView({ behavior: 'smooth' });
++  },
++  className = '',
++}) {
++  const [modelType, setModelType] = useState('watch');
++  const [tier, setTier] = useState('pro_max');
++  const [color, setColor] = useState(COLORWAYS[0]);
++  const [activeFace, setActiveFace] = useState('neon');
++
++  const liveSpecs = [
++    {
++      icon: Shield,
++      title: 'Sapphire Crystal Glass',
++      desc: 'Mohs hardness 9 scratch resistance',
++    },
++    {
++      icon: Layers,
++      title: 'Grade 5 Aerospace Titanium',
++      desc: 'Ultralight, corrosion-proof chassis',
++    },
++    {
++      icon: Battery,
++      title: '21-Day Adventure Battery',
++      desc: 'Continuous dual-band satellite tracking',
++    },
++    {
++      icon: Activity,
++      title: 'Medical-Grade Biometrics',
++      desc: 'ECG, SpO2 & live heart rate sensor array',
++    },
++  ];
++
++  return (
++    <section
++      className={`relative w-full pt-8 pb-16 md:pt-12 md:pb-24 overflow-hidden ${className}`}
++      data-testid="hero-section"
++    >
++      {/* Background Subtle Gradient Blobs */}
++      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[450px] bg-gradient-to-tr from-purple-200/40 via-cyan-100/30 to-indigo-100/20 blur-3xl rounded-full pointer-events-none -z-10" />
++
++      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
++        {/* Hero Header Typography */}
++        <div className="text-center max-w-3xl mx-auto space-y-4">
++          {/* Floating Pill Badges */}
++          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/80 backdrop-blur-md border border-purple-200/80 shadow-xs text-xs font-bold text-purple-700">
++            <Sparkles className="w-3.5 h-3.5 text-purple-600 animate-pulse" />
++            <span>Interactive 3D Studio</span>
++            <span className="w-1 h-1 rounded-full bg-slate-300" />
++            <span className="text-slate-500 font-medium">Real-Time 360° Simulation</span>
++          </div>
++
++          <h1 className="text-4xl sm:text-5xl md:text-6xl font-black text-slate-900 tracking-tight leading-[1.1]">
++            The Future of Vitality <br />
++            <span className="bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-500 bg-clip-text text-transparent">
++              On Your Wrist.
++            </span>
++          </h1>
++
++          <p className="text-sm sm:text-base text-slate-600 leading-relaxed max-w-2xl mx-auto">
++            Experience next-generation smart watches and ergonomic bands rendered in procedural
++            3D. Test interactive watch faces, simulate real-time biometric sensors, and personalize
++            your perfect wearable companion.
++          </p>
++
++          {/* Action CTAs */}
++          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
++            <button
++              type="button"
++              onClick={onExploreClick}
++              className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-xs font-bold transition-all shadow-md shadow-purple-500/25 flex items-center gap-2 group cursor-pointer"
++            >
++              <span>Explore Catalog</span>
++              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
++            </button>
++            <a
++              href="#watch-viewer"
++              className="px-6 py-3.5 rounded-2xl bg-white/80 hover:bg-white text-slate-700 hover:text-purple-600 border border-purple-100 text-xs font-bold transition-all shadow-xs flex items-center gap-2"
++            >
++              <Compass className="w-4 h-4 text-purple-500" />
++              <span>Customize in 3D</span>
++            </a>
++          </div>
++        </div>
++
++        {/* 3D Interactive Stage Container */}
++        <div id="watch-viewer" className="relative w-full max-w-5xl mx-auto shadow-2xl rounded-3xl border border-white/60 bg-white/40 p-2 sm:p-4 backdrop-blur-md">
++          <WatchViewer3D
++            modelType={modelType}
++            tier={tier}
++            color={color}
++            activeFace={activeFace}
++            onModelChange={setModelType}
++            onColorChange={setColor}
++            onFaceChange={setActiveFace}
++            showControls={true}
++            className="w-full"
++          />
++        </div>
++
++        {/* Live Spec Highlights Grid */}
++        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 max-w-5xl mx-auto">
++          {liveSpecs.map((spec, i) => {
++            const Icon = spec.icon;
++            return (
++              <div
++                key={i}
++                className="p-4 rounded-2xl bg-white/70 backdrop-blur-md border border-purple-100/70 hover:border-purple-300 transition-all space-y-1.5"
++              >
++                <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center mb-2">
++                  <Icon className="w-4 h-4" />
++                </div>
++                <h4 className="text-xs font-extrabold text-slate-900">{spec.title}</h4>
++                <p className="text-[11px] text-slate-500 leading-snug">{spec.desc}</p>
++              </div>
++            );
++          })}
++        </div>
++      </div>
++    </section>
++  );
++}
++
++export default HeroSection;
+diff --git a/src/index.css b/src/index.css
+new file mode 100644
+index 0000000..ff6bef6
+--- /dev/null
++++ b/src/index.css
+@@ -0,0 +1,87 @@
++@tailwind base;
++@tailwind components;
++@tailwind utilities;
++
++@layer base {
++  :root {
++    --bg-primary: #F8F6FF;
++    --bg-secondary: #FFFFFF;
++    --bg-accent-soft: #E0F7FA;
++    --brand-purple: #7C3AED;
++    --brand-cyan: #06B6D4;
++    --text-main: #0F172A;
++    --text-muted: #64748B;
++    --border-soft: #EDE9FE;
++    --border-subtle: #E2E8F0;
++  }
++
++  html {
++    scroll-behavior: smooth;
++    -webkit-font-smoothing: antialiased;
++    -moz-osx-font-smoothing: grayscale;
++  }
++
++  body {
++    background-color: #F8F6FF;
++    color: #0F172A;
++    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
++    min-height: 100vh;
++    overflow-x: hidden;
++  }
++}
++
++@layer utilities {
++  /* Glassmorphism Presets */
++  .glass-panel {
++    background: rgba(255, 255, 255, 0.75);
++    backdrop-filter: blur(12px);
++    -webkit-backdrop-filter: blur(12px);
++    border: 1px solid rgba(255, 255, 255, 0.6);
++  }
++
++  .glass-header {
++    background: rgba(255, 255, 255, 0.85);
++    backdrop-filter: blur(16px);
++    -webkit-backdrop-filter: blur(16px);
++    border-bottom: 1px solid rgba(237, 233, 254, 0.7);
++  }
++
++  .glass-dropdown {
++    background: rgba(255, 255, 255, 0.95);
++    backdrop-filter: blur(20px);
++    -webkit-backdrop-filter: blur(20px);
++    border: 1px solid rgba(237, 233, 254, 0.9);
++  }
++
++  /* Accent Glows */
++  .glow-purple {
++    box-shadow: 0 0 25px -4px rgba(124, 58, 237, 0.35);
++  }
++
++  .glow-cyan {
++    box-shadow: 0 0 25px -4px rgba(6, 182, 212, 0.4);
++  }
++
++  .glow-subtle {
++    box-shadow: 0 4px 20px -2px rgba(124, 58, 237, 0.08);
++  }
++
++  /* Custom Slim Scrollbar */
++  ::-webkit-scrollbar {
++    width: 6px;
++    height: 6px;
++  }
++
++  ::-webkit-scrollbar-track {
++    background: #F1EDFF;
++  }
++
++  ::-webkit-scrollbar-thumb {
++    background: #CBD5E1;
++    border-radius: 9999px;
++  }
++
++  ::-webkit-scrollbar-thumb:hover {
++    background: #94A3B8;
++  }
++}
+diff --git a/tests/catalog.test.jsx b/tests/catalog.test.jsx
+index 1007e68..e5d0c57 100644
+--- a/tests/catalog.test.jsx
++++ b/tests/catalog.test.jsx
+@@ -1,11 +1,21 @@
+ import { describe, it, expect } from 'vitest';
++import React from 'react';
++import { renderToString } from 'react-dom/server';
++import { Badge } from '../src/components/common/Badge.jsx';
++import { Header } from '../src/components/common/Header.jsx';
++import { Footer } from '../src/components/common/Footer.jsx';
++import { HeroSection } from '../src/components/hero/HeroSection.jsx';
++import { ProductFilter } from '../src/components/catalog/ProductFilter.jsx';
++import { ProductCard } from '../src/components/catalog/ProductCard.jsx';
++import { ProductGrid } from '../src/components/catalog/ProductGrid.jsx';
++import { ProductDetailModal } from '../src/components/catalog/ProductDetailModal.jsx';
+ import {
+   PRODUCTS,
+   CATEGORIES,
+   TIERS,
+   TIER_LABELS,
+   getProductById,
+   getProductsByCategory,
+   getProductsByTier,
+   getFeaturedProducts,
+ } from '../src/data/products.js';
+@@ -368,10 +378,301 @@ describe('Formatting Utilities', () => {
+   });
+ 
+   it('should format dates safely', () => {
+     const testDate = new Date('2026-10-22T08:00:00Z');
+     const formatted = formatDate(testDate);
+     expect(typeof formatted).toBe('string');
+     expect(formatted.length).toBeGreaterThan(0);
+     expect(formatDate(null)).toBe('');
+   });
+ });
++
++describe('Badge Component', () => {
++  it('should render category badge correctly', () => {
++    const html = renderToString(<Badge category="band" variant="category" />);
++    expect(html).toContain('Smart Band');
++
++    const htmlWatch = renderToString(<Badge category="watch" variant="category" />);
++    expect(htmlWatch).toContain('Smart Watch');
++  });
++
++  it('should render tier badge correctly', () => {
++    const htmlStandard = renderToString(<Badge tier="standard" variant="tier" />);
++    expect(htmlStandard).toContain('Standard');
++
++    const htmlPro = renderToString(<Badge tier="pro" variant="tier" />);
++    expect(htmlPro).toContain('Pro');
++
++    const htmlProMax = renderToString(<Badge tier="pro_max" variant="tier" />);
++    expect(htmlProMax).toContain('Pro Max');
++  });
++
++  it('should render combined category and tier badge', () => {
++    const html = renderToString(<Badge category="watch" tier="pro_max" variant="combined" />);
++    expect(html).toContain('WATCH');
++    expect(html).toContain('PRO MAX');
++  });
++
++  it('should render status variants like new, featured, and sale', () => {
++    const htmlNew = renderToString(<Badge variant="status">New Release</Badge>);
++    expect(htmlNew).toContain('New Release');
++
++    const htmlSale = renderToString(<Badge variant="sale">Save 20%</Badge>);
++    expect(htmlSale).toContain('Save 20%');
++  });
++
++  it('should accept custom className and children', () => {
++    const html = renderToString(<Badge className="custom-test-badge">Custom Content</Badge>);
++    expect(html).toContain('custom-test-badge');
++    expect(html).toContain('Custom Content');
++  });
++});
++
++describe('ProductFilter Component', () => {
++  it('should render category segmented controls for All, Bands, and Watches', () => {
++    const html = renderToString(
++      <ProductFilter
++        activeCategory="all"
++        activeTier="all"
++        onCategoryChange={() => {}}
++        onTierChange={() => {}}
++      />
++    );
++    expect(html).toContain('All Products');
++    expect(html).toContain('Smart Bands');
++    expect(html).toContain('Smart Watches');
++  });
++
++  it('should render tier options for all category including Pro Max', () => {
++    const html = renderToString(
++      <ProductFilter
++        activeCategory="all"
++        activeTier="all"
++        onCategoryChange={() => {}}
++        onTierChange={() => {}}
++      />
++    );
++    expect(html).toContain('All Tiers');
++    expect(html).toContain('Standard');
++    expect(html).toContain('Pro');
++    expect(html).toContain('Pro Max');
++  });
++
++  it('should omit Pro Max tier when category is band', () => {
++    const html = renderToString(
++      <ProductFilter
++        activeCategory="band"
++        activeTier="all"
++        onCategoryChange={() => {}}
++        onTierChange={() => {}}
++      />
++    );
++    expect(html).toContain('Standard');
++    expect(html).toContain('Pro');
++    expect(html).not.toContain('Pro Max');
++  });
++
++  it('should include Pro Max tier when category is watch', () => {
++    const html = renderToString(
++      <ProductFilter
++        activeCategory="watch"
++        activeTier="all"
++        onCategoryChange={() => {}}
++        onTierChange={() => {}}
++      />
++    );
++    expect(html).toContain('Standard');
++    expect(html).toContain('Pro');
++    expect(html).toContain('Pro Max');
++  });
++
++  it('should render search input and active state styles', () => {
++    const html = renderToString(
++      <ProductFilter
++        activeCategory="watch"
++        activeTier="pro"
++        searchQuery="Ultra"
++        onCategoryChange={() => {}}
++        onTierChange={() => {}}
++        onSearchChange={() => {}}
++      />
++    );
++    expect(html).toContain('Ultra');
++  });
++});
++
++describe('ProductCard Component', () => {
++  const sampleProduct = PRODUCTS.find((p) => p.id === 'novawatch-pro');
++
++  it('should render product name, tagline, and formatted price', () => {
++    const html = renderToString(<ProductCard product={sampleProduct} />);
++    expect(html).toContain(sampleProduct.name);
++    expect(html).toContain('Surgical stainless steel');
++    expect(html).toContain('$269.99');
++    expect(html).toContain('$299.99');
++  });
++
++  it('should render key specs in product card', () => {
++    const html = renderToString(<ProductCard product={sampleProduct} />);
++    expect(html).toContain('Sapphire Glass');
++    expect(html).toContain(sampleProduct.specs.batteryLife);
++    expect(html).toContain(sampleProduct.specs.waterResistance);
++  });
++
++  it('should render color swatches for each available color', () => {
++    const html = renderToString(<ProductCard product={sampleProduct} />);
++    sampleProduct.colors.forEach((color) => {
++      expect(html).toContain(color.name);
++    });
++  });
++
++  it('should render Try in 3D and Add to Cart action buttons', () => {
++    const html = renderToString(<ProductCard product={sampleProduct} />);
++    expect(html).toContain('Try in 3D');
++    expect(html).toContain('Add to Cart');
++  });
++
++  it('should render category and tier badge', () => {
++    const html = renderToString(<ProductCard product={sampleProduct} />);
++    expect(html).toContain('WATCH');
++    expect(html).toContain('PRO');
++  });
++});
++
++describe('ProductGrid Component', () => {
++  it('should render responsive grid of product cards', () => {
++    const testProducts = PRODUCTS.slice(0, 3);
++    const html = renderToString(<ProductGrid products={testProducts} />);
++    testProducts.forEach((p) => {
++      expect(html).toContain(p.name);
++    });
++    expect(html).toContain('Showing 3 Wearables');
++  });
++
++  it('should render empty state message when product list is empty', () => {
++    const html = renderToString(
++      <ProductGrid products={[]} onResetFilters={() => {}} />
++    );
++    expect(html).toContain('No wearables found');
++    expect(html).toContain('Reset Filters');
++  });
++});
++
++describe('Header Component', () => {
++  it('should render brand name NOVA WEARABLES', () => {
++    const html = renderToString(<Header />);
++    expect(html).toContain('NOVA WEARABLES');
++  });
++
++  it('should render category navigation tabs', () => {
++    const html = renderToString(<Header activeCategory="all" />);
++    expect(html).toContain('All Products');
++    expect(html).toContain('Smart Bands');
++    expect(html).toContain('Smart Watches');
++  });
++
++  it('should render cart button with badge count when items exist', () => {
++    const html = renderToString(<Header cartCount={3} />);
++    expect(html).toContain('3');
++  });
++
++  it('should render search bar trigger', () => {
++    const html = renderToString(<Header />);
++    expect(html).toContain('Search');
++  });
++});
++
++describe('Footer Component', () => {
++  it('should render brand name, guarantees, and copyright notice', () => {
++    const html = renderToString(<Footer />);
++    expect(html).toContain('NOVA WEARABLES');
++    expect(html).toContain('30-Day Returns');
++    expect(html).toContain('2-Year');
++    expect(html).toContain('2026 NOVA WEARABLES');
++  });
++});
++
++describe('HeroSection Component', () => {
++  it('should render hero title, CTA badges, and live spec highlights', () => {
++    const html = renderToString(<HeroSection />);
++    expect(html).toContain('The Future of Vitality');
++    expect(html).toContain('Interactive 3D Studio');
++    expect(html).toContain('Explore Catalog');
++    expect(html).toContain('watch-viewer-3d');
++  });
++});
++
++describe('ProductDetailModal Component', () => {
++  const sampleProduct = PRODUCTS.find((p) => p.id === 'novawatch-pro-max-ultra');
++
++  it('should return null when isOpen is false', () => {
++    const html = renderToString(
++      <ProductDetailModal isOpen={false} product={sampleProduct} onClose={() => {}} />
++    );
++    expect(html).toBe('');
++  });
++
++  it('should render full detail modal when isOpen is true', () => {
++    const html = renderToString(
++      <ProductDetailModal isOpen={true} product={sampleProduct} onClose={() => {}} />
++    );
++    expect(html).toContain(sampleProduct.name);
++    expect(html).toContain('Grade 5 Titanium');
++    expect(html).toContain('$429.99');
++    expect(html).toContain('Specifications');
++    expect(html).toContain(sampleProduct.specs.casingMaterial);
++    expect(html).toContain('Add to Cart');
++    expect(html).toContain('watch-viewer-3d');
++  });
++
++  it('should render sensors and features in detail modal', () => {
++    const html = renderToString(
++      <ProductDetailModal isOpen={true} product={sampleProduct} onClose={() => {}} />
++    );
++    sampleProduct.specs.sensors.forEach((sensor) => {
++      const escaped = sensor.replace(/&/g, '&amp;');
++      expect(html).toContain(escaped);
++    });
++    sampleProduct.features.forEach((feature) => {
++      const escaped = feature.replace(/&/g, '&amp;');
++      expect(html).toContain(escaped);
++    });
++  });
++
++  it('should render watch face choices in detail modal', () => {
++    const html = renderToString(
++      <ProductDetailModal isOpen={true} product={sampleProduct} onClose={() => {}} />
++    );
++    expect(html).toContain('Minimal');
++    expect(html).toContain('Neon');
++    expect(html).toContain('Chrono');
++    expect(html).toContain('Health');
++  });
++});
++
++describe('Integrated Catalog Filtering Logic', () => {
++  it('should correctly filter by band category and standard tier', () => {
++    const filtered = PRODUCTS.filter((p) => p.category === 'band' && p.tier === 'standard');
++    expect(filtered.length).toBeGreaterThanOrEqual(1);
++    expect(filtered.every((p) => p.category === 'band' && p.tier === 'standard')).toBe(true);
++  });
++
++  it('should correctly filter by watch category and pro_max tier', () => {
++    const filtered = PRODUCTS.filter((p) => p.category === 'watch' && p.tier === 'pro_max');
++    expect(filtered.length).toBe(1);
++    expect(filtered[0].id).toBe('novawatch-pro-max-ultra');
++  });
++
++  it('should filter correctly by search keyword', () => {
++    const query = 'Titanium';
++    const filtered = PRODUCTS.filter(
++      (p) =>
++        p.name.toLowerCase().includes(query.toLowerCase()) ||
++        p.tagline.toLowerCase().includes(query.toLowerCase()) ||
++        p.specs.casingMaterial.toLowerCase().includes(query.toLowerCase())
++    );
++    expect(filtered.length).toBeGreaterThanOrEqual(1);
++    expect(filtered.some((p) => p.id === 'novawatch-pro-max-ultra')).toBe(true);
++  });
++});
++
++

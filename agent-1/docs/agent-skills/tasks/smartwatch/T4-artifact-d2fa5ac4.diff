@@ -1,0 +1,2154 @@
+# Review package: T4-artifact
+mode: worktree against base aefc3e6766e437f1a4de376df0973e051b52905f
+artifact-hash: d2fa5ac4c8943f84e3f331e3398af932f386986a
+files-changed: 8
+
+## Stat
+ index.html                            |   1 +
+ src/App.tsx                           |  79 ++++-
+ src/components/cart/CartDrawer.tsx    | 295 +++++++++++++++++
+ src/components/cart/CartItemRow.tsx   |  98 ++++++
+ src/components/cart/CheckoutModal.tsx | 606 ++++++++++++++++++++++++++++++++++
+ src/hooks/useCart.ts                  | 231 +++++++++++++
+ src/utils/storage.ts                  |  91 +++++
+ tests/cart.test.ts                    | 550 ++++++++++++++++++++++++++++++
+ 8 files changed, 1938 insertions(+), 13 deletions(-)
+
+## Diff
+diff --git a/index.html b/index.html
+index 76c474c..6a4bf5e 100644
+--- a/index.html
++++ b/index.html
+@@ -8,12 +8,13 @@
+     <link rel="preconnect" href="https://fonts.googleapis.com" />
+     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+     <link
+       href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+       rel="stylesheet"
+     />
+     <link rel="stylesheet" href="/src/index.css" />
+   </head>
+   <body class="bg-[#F8F6FF] text-[#0F172A] antialiased min-h-screen">
+     <div id="root"></div>
++    <script type="module" src="/src/main.tsx"></script>
+   </body>
+ </html>
+diff --git a/src/App.tsx b/src/App.tsx
+index 503b9f5..8590a02 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -1,20 +1,23 @@
+ import React, { useState } from 'react';
+ import { products } from './data/products';
+ import type { Product, ProductCategory, ColorOption, WatchFaceId } from './types';
+ import { Navbar } from './components/layout/Navbar';
+ import { Footer } from './components/layout/Footer';
+ import { ProductCatalog } from './components/catalog/ProductCatalog';
+ import { CompareModal } from './components/catalog/CompareModal';
+ import { WatchViewer3D } from './components/viewer3d/WatchViewer3D';
+ import { Button } from './components/common/Button';
+ import { Badge } from './components/common/Badge';
++import { useCart } from './hooks/useCart';
++import { CartDrawer } from './components/cart/CartDrawer';
++import { CheckoutModal } from './components/cart/CheckoutModal';
+ import {
+   Sparkles,
+   ShoppingBag,
+   ArrowRight,
+   Shield,
+   Activity,
+   Compass,
+   BatteryCharging,
+   Cpu,
+   Layers,
+@@ -22,22 +25,24 @@ import {
+   X,
+   Search,
+ } from 'lucide-react';
+ 
+ export const App: React.FC = () => {
+   // Active product loaded in 3D Interactive Studio
+   const [activeProduct, setActiveProduct] = useState<Product>(
+     products.find((p) => p.id === 'watch-horizon-max') || products[0]
+   );
+ 
+-  // Cart state simulation
+-  const [cartCount, setCartCount] = useState<number>(0);
++  // Persistent shopping cart & drawer/checkout modal states
++  const cart = useCart();
++  const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
++  const [isCheckoutOpen, setIsCheckoutOpen] = useState<boolean>(false);
+ 
+   // Modals state
+   const [isCompareOpen, setIsCompareOpen] = useState<boolean>(false);
+   const [compareCategory, setCompareCategory] = useState<ProductCategory | undefined>(undefined);
+   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
+   const [searchModalQuery, setSearchModalQuery] = useState<string>('');
+ 
+   // Toast feedback state
+   const [toastMessage, setToastMessage] = useState<string | null>(null);
+ 
+@@ -54,21 +59,21 @@ export const App: React.FC = () => {
+       el.scrollIntoView({ behavior: 'smooth' });
+     }
+   };
+ 
+   const handlePreview3D = (product: Product) => {
+     setActiveProduct(product);
+     scrollToSection('studio');
+   };
+ 
+   const handleAddToCart = (product: Product, color: ColorOption, face: WatchFaceId) => {
+-    setCartCount((prev) => prev + 1);
++    cart.addItem(product, color, face);
+     showToast(`Added to your bag! ${product.name} (${color.name}) - $${product.price}`);
+   };
+ 
+   const handleOpenCompare = (category?: ProductCategory) => {
+     setCompareCategory(category);
+     setIsCompareOpen(true);
+   };
+ 
+   // Quick search results in search modal
+   const searchResults = searchModalQuery.trim()
+@@ -98,28 +103,22 @@ export const App: React.FC = () => {
+             onClick={() => setToastMessage(null)}
+             className="text-slate-400 hover:text-slate-600 p-1"
+           >
+             <X className="w-4 h-4" />
+           </button>
+         </div>
+       )}
+ 
+       {/* Global Navigation Header */}
+       <Navbar
+-        cartCount={cartCount}
+-        onOpenCart={() => {
+-          if (cartCount === 0) {
+-            showToast('Your bag is currently empty. Explore our catalog below to add a wearable!');
+-          } else {
+-            showToast(`You have ${cartCount} wearable(s) in your bag ready for checkout.`);
+-          }
+-        }}
++        cartCount={cart.totalItems}
++        onOpenCart={() => setIsCartOpen(true)}
+         onOpenSearch={() => setIsSearchOpen(true)}
+         onNavigate={(section) => {
+           if (section === 'compare') {
+             setIsCompareOpen(true);
+           } else {
+             scrollToSection(section);
+           }
+         }}
+       />
+ 
+@@ -272,28 +271,43 @@ export const App: React.FC = () => {
+                           ? 'bg-purple-600 text-white shadow-sm scale-105'
+                           : 'bg-white/80 text-slate-600 hover:text-purple-700 hover:bg-purple-50 border border-slate-200/70'
+                       }`}
+                     >
+                       {item.name}
+                     </button>
+                   );
+                 })}
+               </div>
+ 
+-              {/* Active Studio Device Status Indicator */}
+-              <div className="pt-1">
++              {/* Active Studio Device Status Indicator & Studio Add to Bag */}
++              <div className="pt-1 flex items-center justify-center gap-3 flex-wrap">
+                 <span
+                   data-testid="studio-active-title"
+                   className="text-xs font-bold text-purple-800 bg-purple-100/80 px-3 py-1 rounded-full border border-purple-200"
+                 >
+                   Active Studio Device: {activeProduct.name} (${activeProduct.price})
+                 </span>
++                <Button
++                  data-testid="studio-add-to-bag"
++                  variant="primary"
++                  size="sm"
++                  onClick={() =>
++                    handleAddToCart(
++                      activeProduct,
++                      activeProduct.colors[0],
++                      activeProduct.defaultFace
++                    )
++                  }
++                >
++                  <ShoppingBag className="w-3.5 h-3.5 text-white" />
++                  <span>Add to Bag</span>
++                </Button>
+               </div>
+             </div>
+ 
+             {/* 3D Interactive Viewer Component with full Studio Controls */}
+             <div className="max-w-5xl mx-auto">
+               <WatchViewer3D
+                 key={activeProduct.id}
+                 product={activeProduct}
+                 showControls={true}
+                 autoRotate={false}
+@@ -462,17 +476,56 @@ export const App: React.FC = () => {
+                   <p className="text-xs text-slate-500 text-center py-4">
+                     No matching devices found for &quot;{searchModalQuery}&quot;.
+                   </p>
+                 )}
+               </div>
+             )}
+           </div>
+         </div>
+       )}
+ 
++      {/* Slide-over Shopping Cart Drawer */}
++      <CartDrawer
++        isOpen={isCartOpen}
++        onClose={() => setIsCartOpen(false)}
++        onProceedToCheckout={() => {
++          setIsCartOpen(false);
++          setIsCheckoutOpen(true);
++        }}
++        items={cart.items}
++        totalItems={cart.totalItems}
++        subtotal={cart.subtotal}
++        discountCode={cart.discountCode}
++        discountAmount={cart.discountAmount}
++        tax={cart.tax}
++        shipping={cart.shipping}
++        total={cart.total}
++        onUpdateQuantity={cart.updateQuantity}
++        onRemoveItem={cart.removeItem}
++        onApplyPromoCode={cart.applyPromoCode}
++        onRemovePromoCode={cart.removePromoCode}
++      />
++
++      {/* Multi-step Simulated Checkout Modal */}
++      <CheckoutModal
++        isOpen={isCheckoutOpen}
++        onClose={() => setIsCheckoutOpen(false)}
++        onCompleteOrder={() => {
++          cart.clearCart();
++          showToast('Order confirmed! Check your email for dispatch telemetry.');
++        }}
++        items={cart.items}
++        subtotal={cart.subtotal}
++        discountCode={cart.discountCode}
++        discountAmount={cart.discountAmount}
++        tax={cart.tax}
++        shipping={cart.shipping}
++        total={cart.total}
++      />
++
+       {/* Global Footer */}
+       <Footer />
+     </div>
+   );
+ };
+ 
+ export default App;
+diff --git a/src/components/cart/CartDrawer.tsx b/src/components/cart/CartDrawer.tsx
+new file mode 100644
+index 0000000..aa5e969
+--- /dev/null
++++ b/src/components/cart/CartDrawer.tsx
+@@ -0,0 +1,295 @@
++import React, { useState } from 'react';
++import type { CartItem } from '../../types';
++import type { PromoCodeResult } from '../../hooks/useCart';
++import { CartItemRow } from './CartItemRow';
++import { Button } from '../common/Button';
++import {
++  ShoppingBag,
++  X,
++  Tag,
++  ArrowRight,
++  ShieldCheck,
++  Sparkles,
++  AlertCircle,
++  CheckCircle2,
++} from 'lucide-react';
++
++export interface CartDrawerProps {
++  isOpen: boolean;
++  onClose: () => void;
++  onProceedToCheckout: () => void;
++  items: CartItem[];
++  totalItems: number;
++  subtotal: number;
++  discountCode: string | null;
++  discountAmount: number;
++  tax: number;
++  shipping: number;
++  total: number;
++  onUpdateQuantity: (id: string, quantity: number) => void;
++  onRemoveItem: (id: string) => void;
++  onApplyPromoCode: (code: string) => PromoCodeResult | void;
++  onRemovePromoCode: () => void;
++}
++
++export const CartDrawer: React.FC<CartDrawerProps> = ({
++  isOpen,
++  onClose,
++  onProceedToCheckout,
++  items,
++  totalItems,
++  subtotal,
++  discountCode,
++  discountAmount,
++  tax,
++  shipping,
++  total,
++  onUpdateQuantity,
++  onRemoveItem,
++  onApplyPromoCode,
++  onRemovePromoCode,
++}) => {
++  const [promoInput, setPromoInput] = useState('');
++  const [promoFeedback, setPromoFeedback] = useState<{
++    type: 'success' | 'error';
++    text: string;
++  } | null>(null);
++
++  if (!isOpen) return null;
++
++  const handleApplyPromo = (e: React.FormEvent) => {
++    e.preventDefault();
++    if (!promoInput.trim()) return;
++
++    const result = onApplyPromoCode(promoInput.trim());
++    if (result && !result.success) {
++      setPromoFeedback({
++        type: 'error',
++        text: result.error || 'Invalid promo code. Try AURA10 or LAUNCH20.',
++      });
++    } else {
++      setPromoFeedback({
++        type: 'success',
++        text: result?.message || `Promo code ${promoInput.toUpperCase()} applied!`,
++      });
++      setPromoInput('');
++    }
++  };
++
++  const handleRemovePromo = () => {
++    onRemovePromoCode();
++    setPromoFeedback(null);
++  };
++
++  return (
++    <div
++      role="dialog"
++      aria-modal="true"
++      aria-label="Shopping bag drawer"
++      className="fixed inset-0 z-50 overflow-hidden"
++    >
++      {/* Backdrop */}
++      <div
++        className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm transition-opacity animate-in fade-in duration-200"
++        onClick={onClose}
++      />
++
++      {/* Slide-over panel */}
++      <aside className="fixed inset-y-0 right-0 max-w-full flex pl-10 z-50">
++        <div className="w-screen max-w-md bg-white shadow-2xl flex flex-col border-l border-purple-100 animate-in slide-in-from-right duration-300">
++          {/* Header */}
++          <div className="p-4 sm:p-5 border-b border-purple-100 flex items-center justify-between bg-gradient-to-r from-purple-50/50 via-white to-purple-50/30">
++            <div className="flex items-center gap-2.5">
++              <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center">
++                <ShoppingBag className="w-5 h-5" />
++              </div>
++              <div>
++                <h2 className="text-base sm:text-lg font-bold text-slate-900">
++                  Your Shopping Bag
++                </h2>
++                <span className="text-xs text-slate-500">
++                  {totalItems} {totalItems === 1 ? 'item' : 'items'} selected
++                </span>
++              </div>
++            </div>
++
++            <button
++              type="button"
++              aria-label="Close cart"
++              onClick={onClose}
++              className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
++            >
++              <X className="w-5 h-5" />
++            </button>
++          </div>
++
++          {/* Cart Content: Items or Empty State */}
++          <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3">
++            {items.length === 0 ? (
++              <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-4">
++                <div className="w-16 h-16 rounded-3xl bg-purple-50 border border-purple-100 flex items-center justify-center text-purple-400">
++                  <ShoppingBag className="w-8 h-8" />
++                </div>
++                <div>
++                  <h3 className="text-base font-bold text-slate-800">
++                    Your bag is empty
++                  </h3>
++                  <p className="text-xs text-slate-500 mt-1 max-w-xs leading-relaxed">
++                    Explore our next-gen titanium smartwatches and biometrics bands to customize your wearable.
++                  </p>
++                </div>
++                <Button
++                  variant="primary"
++                  size="md"
++                  onClick={onClose}
++                  className="mt-2"
++                >
++                  <Sparkles className="w-4 h-4 text-cyan-300" />
++                  <span>Explore Wearables</span>
++                </Button>
++              </div>
++            ) : (
++              <div className="space-y-3">
++                {items.map((item) => (
++                  <CartItemRow
++                    key={item.id}
++                    item={item}
++                    onUpdateQuantity={onUpdateQuantity}
++                    onRemove={onRemoveItem}
++                  />
++                ))}
++              </div>
++            )}
++          </div>
++
++          {/* Bottom Panel: Promo Code, Summary & Checkout CTA */}
++          {items.length > 0 && (
++            <div className="border-t border-purple-100 p-4 sm:p-5 bg-[#FAF9FF] space-y-4">
++              {/* Promo Code Input Form */}
++              <div>
++                {discountCode ? (
++                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-purple-100/70 border border-purple-200 text-xs">
++                    <div className="flex items-center gap-1.5 text-purple-900 font-semibold">
++                      <Tag className="w-3.5 h-3.5 text-purple-700" />
++                      <span>Code {discountCode} Applied</span>
++                      <span className="text-[11px] text-purple-600 font-normal">
++                        (-${discountAmount.toFixed(2)})
++                      </span>
++                    </div>
++                    <button
++                      type="button"
++                      onClick={handleRemovePromo}
++                      className="text-xs font-bold text-purple-700 hover:text-rose-600 hover:underline"
++                    >
++                      Remove
++                    </button>
++                  </div>
++                ) : (
++                  <form onSubmit={handleApplyPromo} className="space-y-1.5">
++                    <div className="flex gap-2">
++                      <div className="relative flex-1">
++                        <Tag className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
++                        <input
++                          type="text"
++                          value={promoInput}
++                          onChange={(e) => {
++                            setPromoInput(e.target.value);
++                            if (promoFeedback) setPromoFeedback(null);
++                          }}
++                          placeholder="Promo code (AURA10, LAUNCH20)"
++                          className="w-full pl-8 pr-3 py-2 text-xs bg-white border border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-400 text-slate-800 placeholder-slate-400 uppercase"
++                        />
++                      </div>
++                      <Button
++                        type="submit"
++                        variant="secondary"
++                        size="sm"
++                        disabled={!promoInput.trim()}
++                      >
++                        Apply
++                      </Button>
++                    </div>
++
++                    {promoFeedback && (
++                      <p
++                        className={`text-[11px] flex items-center gap-1 mt-1 ${
++                          promoFeedback.type === 'error'
++                            ? 'text-rose-600'
++                            : 'text-emerald-600'
++                        }`}
++                      >
++                        {promoFeedback.type === 'error' ? (
++                          <AlertCircle className="w-3 h-3 shrink-0" />
++                        ) : (
++                          <CheckCircle2 className="w-3 h-3 shrink-0" />
++                        )}
++                        <span>{promoFeedback.text}</span>
++                      </p>
++                    )}
++                  </form>
++                )}
++              </div>
++
++              {/* Order Breakdown Summary */}
++              <div className="space-y-1.5 text-xs text-slate-600 pt-1 border-t border-purple-100/80">
++                <div className="flex justify-between">
++                  <span>Subtotal</span>
++                  <span className="font-semibold text-slate-900">
++                    ${subtotal.toFixed(2)}
++                  </span>
++                </div>
++
++                {discountAmount > 0 && (
++                  <div className="flex justify-between text-emerald-600 font-medium">
++                    <span>Discount ({discountCode})</span>
++                    <span>-${discountAmount.toFixed(2)}</span>
++                  </div>
++                )}
++
++                <div className="flex justify-between">
++                  <span>Estimated Tax (8%)</span>
++                  <span className="font-semibold text-slate-900">
++                    ${tax.toFixed(2)}
++                  </span>
++                </div>
++
++                <div className="flex justify-between">
++                  <span>Shipping</span>
++                  <span className="font-bold text-emerald-600">
++                    {shipping === 0 ? 'FREE' : `$${shipping.toFixed(2)}`}
++                  </span>
++                </div>
++
++                <div className="flex justify-between pt-2 border-t border-purple-200/80 text-sm font-extrabold text-slate-900">
++                  <span>Total</span>
++                  <span className="text-purple-700 font-black">
++                    ${total.toFixed(2)}
++                  </span>
++                </div>
++              </div>
++
++              {/* Trust badge */}
++              <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
++                <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
++                <span>30-Day Risk-Free Returns &amp; 2-Year Warranty</span>
++              </div>
++
++              {/* Proceed to Checkout CTA */}
++              <Button
++                variant="primary"
++                size="lg"
++                onClick={onProceedToCheckout}
++                className="w-full shadow-lg shadow-purple-500/20"
++              >
++                <span>Proceed to Checkout</span>
++                <ArrowRight className="w-4 h-4" />
++              </Button>
++            </div>
++          )}
++        </div>
++      </aside>
++    </div>
++  );
++};
++
++export default CartDrawer;
+diff --git a/src/components/cart/CartItemRow.tsx b/src/components/cart/CartItemRow.tsx
+new file mode 100644
+index 0000000..e8a1491
+--- /dev/null
++++ b/src/components/cart/CartItemRow.tsx
+@@ -0,0 +1,98 @@
++import React from 'react';
++import type { CartItem } from '../../types';
++import { Plus, Minus, Trash2 } from 'lucide-react';
++
++export interface CartItemRowProps {
++  item: CartItem;
++  onUpdateQuantity: (id: string, quantity: number) => void;
++  onRemove: (id: string) => void;
++}
++
++export const CartItemRow: React.FC<CartItemRowProps> = ({
++  item,
++  onUpdateQuantity,
++  onRemove,
++}) => {
++  const lineTotal = item.price * item.quantity;
++
++  return (
++    <div className="flex items-center gap-3.5 p-3.5 bg-white/70 hover:bg-white/90 rounded-2xl border border-purple-100/80 transition-all shadow-xs">
++      {/* Color Swatch Dot / Visual Indicator */}
++      <div className="relative shrink-0 flex items-center justify-center">
++        <div
++          className="w-10 h-10 rounded-xl flex items-center justify-center shadow-inner border border-slate-200/60"
++          style={{ backgroundColor: item.selectedColor.caseHex }}
++        >
++          <div
++            className="w-4 h-4 rounded-full border-2 border-white shadow-sm"
++            style={{ backgroundColor: item.selectedColor.hex }}
++          />
++        </div>
++      </div>
++
++      {/* Item Details */}
++      <div className="flex-1 min-w-0">
++        <div className="flex items-start justify-between gap-2">
++          <h4 className="text-sm font-bold text-slate-900 truncate">{item.name}</h4>
++          <span className="text-sm font-extrabold text-slate-900 whitespace-nowrap">
++            ${lineTotal}
++          </span>
++        </div>
++
++        {/* Selected options: Color & Watch Face */}
++        <div className="flex items-center gap-2 mt-1 flex-wrap">
++          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-600 bg-purple-50/80 px-2 py-0.5 rounded-md border border-purple-100">
++            <span
++              className="w-2 h-2 rounded-full inline-block"
++              style={{ backgroundColor: item.selectedColor.hex }}
++            />
++            {item.selectedColor.name}
++          </span>
++          <span className="text-[11px] font-medium text-purple-700 bg-purple-100/70 px-2 py-0.5 rounded-md border border-purple-200/50 uppercase tracking-wider">
++            {item.selectedFace}
++          </span>
++          <span className="text-[11px] text-slate-400">
++            ${item.price} each
++          </span>
++        </div>
++
++        {/* Quantity Controls & Remove Action */}
++        <div className="flex items-center justify-between mt-2.5 pt-1">
++          <div className="inline-flex items-center bg-purple-50/80 rounded-xl border border-purple-200/60 p-0.5">
++            <button
++              type="button"
++              aria-label="Decrease quantity"
++              onClick={() => onUpdateQuantity(item.id, item.quantity - 1)}
++              className="p-1 rounded-lg text-slate-600 hover:text-purple-700 hover:bg-white transition-colors"
++            >
++              <Minus className="w-3.5 h-3.5" />
++            </button>
++            <span className="px-2.5 text-xs font-bold text-slate-800 font-mono">
++              {item.quantity}
++            </span>
++            <button
++              type="button"
++              aria-label="Increase quantity"
++              onClick={() => onUpdateQuantity(item.id, item.quantity + 1)}
++              className="p-1 rounded-lg text-slate-600 hover:text-purple-700 hover:bg-white transition-colors"
++            >
++              <Plus className="w-3.5 h-3.5" />
++            </button>
++          </div>
++
++          <button
++            type="button"
++            aria-label="Remove item"
++            onClick={() => onRemove(item.id)}
++            className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
++            title="Remove item"
++          >
++            <Trash2 className="w-4 h-4" />
++          </button>
++        </div>
++      </div>
++    </div>
++  );
++};
++
++export default CartItemRow;
+diff --git a/src/components/cart/CheckoutModal.tsx b/src/components/cart/CheckoutModal.tsx
+new file mode 100644
+index 0000000..ec2ede3
+--- /dev/null
++++ b/src/components/cart/CheckoutModal.tsx
+@@ -0,0 +1,606 @@
++import React, { useState } from 'react';
++import type { CartItem } from '../../types';
++import { Button } from '../common/Button';
++import {
++  X,
++  CheckCircle2,
++  CreditCard,
++  Truck,
++  ShieldCheck,
++  ArrowRight,
++  ArrowLeft,
++  Smartphone,
++  Banknote,
++  PackageCheck,
++  Clock,
++  Sparkles,
++} from 'lucide-react';
++
++export interface CheckoutModalProps {
++  isOpen: boolean;
++  onClose: () => void;
++  onCompleteOrder: () => void;
++  items: CartItem[];
++  subtotal: number;
++  discountCode?: string | null;
++  discountAmount?: number;
++  tax: number;
++  shipping: number;
++  total: number;
++}
++
++export type CheckoutStep = 'shipping' | 'payment' | 'confirmation';
++export type PaymentMethod = 'credit_card' | 'apple_pay' | 'cod';
++
++export const CheckoutModal: React.FC<CheckoutModalProps> = ({
++  isOpen,
++  onClose,
++  onCompleteOrder,
++  items,
++  subtotal,
++  discountCode,
++  discountAmount = 0,
++  tax,
++  shipping,
++  total,
++}) => {
++  const [step, setStep] = useState<CheckoutStep>('shipping');
++
++  // Shipping Form State
++  const [name, setName] = useState('');
++  const [email, setEmail] = useState('');
++  const [address, setAddress] = useState('');
++  const [city, setCity] = useState('');
++  const [shippingErrors, setShippingErrors] = useState<Record<string, string>>({});
++
++  // Payment Form State
++  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('credit_card');
++  const [cardNumber, setCardNumber] = useState('');
++  const [expiry, setExpiry] = useState('');
++  const [cvv, setCvv] = useState('');
++  const [paymentErrors, setPaymentErrors] = useState<Record<string, string>>({});
++
++  // Generated Order Information
++  const [orderId, setOrderId] = useState<string>('');
++
++  if (!isOpen) return null;
++
++  const validateShipping = (): boolean => {
++    const errors: Record<string, string> = {};
++    if (!name.trim()) errors.name = 'Full name is required';
++    if (!email.trim()) {
++      errors.email = 'Email address is required';
++    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
++      errors.email = 'Please enter a valid email address';
++    }
++    if (!address.trim()) errors.address = 'Street address is required';
++    if (!city.trim()) errors.city = 'City is required';
++
++    setShippingErrors(errors);
++    return Object.keys(errors).length === 0;
++  };
++
++  const validatePayment = (): boolean => {
++    if (paymentMethod !== 'credit_card') return true;
++
++    const errors: Record<string, string> = {};
++    const sanitizedCard = cardNumber.replace(/\s+/g, '');
++    if (!sanitizedCard || sanitizedCard.length < 15) {
++      errors.cardNumber = 'Please enter a valid 15 or 16-digit card number';
++    }
++    if (!expiry.trim() || !/^\d{2}\/\d{2}$/.test(expiry.trim())) {
++      errors.expiry = 'Expiry must be in MM/YY format';
++    }
++    if (!cvv.trim() || cvv.trim().length < 3) {
++      errors.cvv = 'CVV must be 3 or 4 digits';
++    }
++
++    setPaymentErrors(errors);
++    return Object.keys(errors).length === 0;
++  };
++
++  const handleContinueToPayment = (e: React.FormEvent) => {
++    e.preventDefault();
++    if (validateShipping()) {
++      setStep('payment');
++    }
++  };
++
++  const generateOrderId = (): string => {
++    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
++    let result = '';
++    for (let i = 0; i < 6; i++) {
++      result += chars.charAt(Math.floor(Math.random() * chars.length));
++    }
++    return `AURA-${result}`;
++  };
++
++  const handlePlaceOrder = (e: React.FormEvent) => {
++    e.preventDefault();
++    if (validatePayment()) {
++      const generated = generateOrderId();
++      setOrderId(generated);
++      setStep('confirmation');
++    }
++  };
++
++  const handleFinishAndReset = () => {
++    onCompleteOrder();
++    onClose();
++    // Reset steps for next checkout
++    setStep('shipping');
++  };
++
++  return (
++    <div
++      role="dialog"
++      aria-modal="true"
++      aria-label="Checkout Dialog"
++      className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 sm:p-6"
++    >
++      <div className="relative w-full max-w-xl bg-white rounded-3xl shadow-2xl border border-purple-100 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
++        {/* Modal Header */}
++        <div className="p-5 sm:p-6 border-b border-purple-100 flex items-center justify-between bg-gradient-to-r from-purple-50/70 via-white to-purple-50/40">
++          <div className="flex items-center gap-2">
++            <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center shadow-sm shadow-purple-500/20">
++              <Sparkles className="w-4 h-4" />
++            </div>
++            <div>
++              <span className="text-[11px] font-bold uppercase tracking-wider text-purple-700 block">
++                AURA Secure Checkout
++              </span>
++              <h2 className="text-base sm:text-lg font-bold text-slate-900">
++                {step === 'shipping' && 'Shipping Information'}
++                {step === 'payment' && 'Payment Method'}
++                {step === 'confirmation' && 'Order Confirmation'}
++              </h2>
++            </div>
++          </div>
++
++          {step !== 'confirmation' && (
++            <button
++              type="button"
++              aria-label="Close checkout"
++              onClick={onClose}
++              className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
++            >
++              <X className="w-5 h-5" />
++            </button>
++          )}
++        </div>
++
++        {/* Step Progress Tracker */}
++        {step !== 'confirmation' && (
++          <div className="px-6 pt-4 pb-2 bg-slate-50/60 border-b border-purple-100/50 flex items-center justify-between text-xs">
++            <div className="flex items-center gap-2">
++              <span
++                className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs ${
++                  step === 'shipping'
++                    ? 'bg-purple-600 text-white'
++                    : 'bg-emerald-500 text-white'
++                }`}
++              >
++                1
++              </span>
++              <span className={`font-semibold ${step === 'shipping' ? 'text-purple-700' : 'text-slate-700'}`}>
++                Shipping
++              </span>
++            </div>
++            <div className="h-0.5 flex-1 mx-3 bg-purple-200" />
++            <div className="flex items-center gap-2">
++              <span
++                className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs ${
++                  step === 'payment'
++                    ? 'bg-purple-600 text-white'
++                    : 'bg-slate-200 text-slate-500'
++                }`}
++              >
++                2
++              </span>
++              <span className={`font-semibold ${step === 'payment' ? 'text-purple-700' : 'text-slate-400'}`}>
++                Payment
++              </span>
++            </div>
++            <div className="h-0.5 flex-1 mx-3 bg-slate-200" />
++            <div className="flex items-center gap-2">
++              <span className="w-6 h-6 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center font-bold text-xs">
++                3
++              </span>
++              <span className="font-semibold text-slate-400">Confirmation</span>
++            </div>
++          </div>
++        )}
++
++        {/* Modal Body */}
++        <div className="p-6">
++          {/* ========================================================= */}
++          {/* STEP 1: SHIPPING FORM */}
++          {/* ========================================================= */}
++          {step === 'shipping' && (
++            <form onSubmit={handleContinueToPayment} className="space-y-4">
++              <div>
++                <label
++                  htmlFor="fullName"
++                  className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1"
++                >
++                  Full Name
++                </label>
++                <input
++                  id="fullName"
++                  type="text"
++                  value={name}
++                  onChange={(e) => {
++                    setName(e.target.value);
++                    if (shippingErrors.name) setShippingErrors((prev) => ({ ...prev, name: '' }));
++                  }}
++                  placeholder="e.g., Jane Doe"
++                  className="w-full px-3.5 py-2.5 text-sm bg-purple-50/40 border border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-400 text-slate-800"
++                />
++                {shippingErrors.name && (
++                  <p className="text-xs text-rose-500 mt-1">{shippingErrors.name}</p>
++                )}
++              </div>
++
++              <div>
++                <label
++                  htmlFor="email"
++                  className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1"
++                >
++                  Email Address
++                </label>
++                <input
++                  id="email"
++                  type="email"
++                  value={email}
++                  onChange={(e) => {
++                    setEmail(e.target.value);
++                    if (shippingErrors.email) setShippingErrors((prev) => ({ ...prev, email: '' }));
++                  }}
++                  placeholder="e.g., jane@aura.test"
++                  className="w-full px-3.5 py-2.5 text-sm bg-purple-50/40 border border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-400 text-slate-800"
++                />
++                {shippingErrors.email && (
++                  <p className="text-xs text-rose-500 mt-1">{shippingErrors.email}</p>
++                )}
++              </div>
++
++              <div>
++                <label
++                  htmlFor="address"
++                  className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1"
++                >
++                  Street Address
++                </label>
++                <input
++                  id="address"
++                  type="text"
++                  value={address}
++                  onChange={(e) => {
++                    setAddress(e.target.value);
++                    if (shippingErrors.address) setShippingErrors((prev) => ({ ...prev, address: '' }));
++                  }}
++                  placeholder="e.g., 100 Silicon Way"
++                  className="w-full px-3.5 py-2.5 text-sm bg-purple-50/40 border border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-400 text-slate-800"
++                />
++                {shippingErrors.address && (
++                  <p className="text-xs text-rose-500 mt-1">{shippingErrors.address}</p>
++                )}
++              </div>
++
++              <div>
++                <label
++                  htmlFor="city"
++                  className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1"
++                >
++                  City
++                </label>
++                <input
++                  id="city"
++                  type="text"
++                  value={city}
++                  onChange={(e) => {
++                    setCity(e.target.value);
++                    if (shippingErrors.city) setShippingErrors((prev) => ({ ...prev, city: '' }));
++                  }}
++                  placeholder="e.g., San Francisco"
++                  className="w-full px-3.5 py-2.5 text-sm bg-purple-50/40 border border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-400 text-slate-800"
++                />
++                {shippingErrors.city && (
++                  <p className="text-xs text-rose-500 mt-1">{shippingErrors.city}</p>
++                )}
++              </div>
++
++              {/* Order Mini-Recap */}
++              <div className="pt-3 border-t border-purple-100 flex items-center justify-between text-xs text-slate-600">
++                <span>Total Due (inc. 8% tax &amp; free shipping):</span>
++                <span className="font-bold text-slate-900 text-sm">${total.toFixed(2)}</span>
++              </div>
++
++              <div className="pt-2">
++                <Button
++                  type="submit"
++                  variant="primary"
++                  size="lg"
++                  className="w-full shadow-lg shadow-purple-500/20"
++                >
++                  <span>Continue to Payment</span>
++                  <ArrowRight className="w-4 h-4" />
++                </Button>
++              </div>
++            </form>
++          )}
++
++          {/* ========================================================= */}
++          {/* STEP 2: PAYMENT METHOD */}
++          {/* ========================================================= */}
++          {step === 'payment' && (
++            <form onSubmit={handlePlaceOrder} className="space-y-4">
++              {/* Payment Methods Selection */}
++              <div className="grid grid-cols-3 gap-2.5">
++                <button
++                  type="button"
++                  onClick={() => setPaymentMethod('credit_card')}
++                  className={`p-3 rounded-2xl border flex flex-col items-center justify-center gap-1.5 transition-all text-xs font-bold ${
++                    paymentMethod === 'credit_card'
++                      ? 'border-purple-600 bg-purple-50/80 text-purple-700 shadow-sm ring-1 ring-purple-500'
++                      : 'border-slate-200 hover:border-purple-200 text-slate-600'
++                  }`}
++                >
++                  <CreditCard className="w-5 h-5 text-purple-600" />
++                  <span>Credit Card</span>
++                </button>
++
++                <button
++                  type="button"
++                  onClick={() => setPaymentMethod('apple_pay')}
++                  className={`p-3 rounded-2xl border flex flex-col items-center justify-center gap-1.5 transition-all text-xs font-bold ${
++                    paymentMethod === 'apple_pay'
++                      ? 'border-purple-600 bg-purple-50/80 text-purple-700 shadow-sm ring-1 ring-purple-500'
++                      : 'border-slate-200 hover:border-purple-200 text-slate-600'
++                  }`}
++                >
++                  <Smartphone className="w-5 h-5 text-slate-900" />
++                  <span>Apple Pay</span>
++                </button>
++
++                <button
++                  type="button"
++                  onClick={() => setPaymentMethod('cod')}
++                  className={`p-3 rounded-2xl border flex flex-col items-center justify-center gap-1.5 transition-all text-xs font-bold ${
++                    paymentMethod === 'cod'
++                      ? 'border-purple-600 bg-purple-50/80 text-purple-700 shadow-sm ring-1 ring-purple-500'
++                      : 'border-slate-200 hover:border-purple-200 text-slate-600'
++                  }`}
++                >
++                  <Banknote className="w-5 h-5 text-emerald-600" />
++                  <span>Cash on Delivery</span>
++                </button>
++              </div>
++
++              {/* Credit Card Input Form */}
++              {paymentMethod === 'credit_card' && (
++                <div className="space-y-3 p-4 bg-purple-50/30 rounded-2xl border border-purple-100">
++                  <div>
++                    <label
++                      htmlFor="cardNumber"
++                      className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1"
++                    >
++                      Card Number
++                    </label>
++                    <input
++                      id="cardNumber"
++                      type="text"
++                      maxLength={19}
++                      value={cardNumber}
++                      onChange={(e) => {
++                        setCardNumber(e.target.value);
++                        if (paymentErrors.cardNumber) {
++                          setPaymentErrors((prev) => ({ ...prev, cardNumber: '' }));
++                        }
++                      }}
++                      placeholder="4111 2222 3333 4444"
++                      className="w-full px-3.5 py-2.5 text-sm bg-white border border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-400 text-slate-800 font-mono"
++                    />
++                    {paymentErrors.cardNumber && (
++                      <p className="text-xs text-rose-500 mt-1">{paymentErrors.cardNumber}</p>
++                    )}
++                  </div>
++
++                  <div className="grid grid-cols-2 gap-3">
++                    <div>
++                      <label
++                        htmlFor="expiry"
++                        className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1"
++                      >
++                        Expiry
++                      </label>
++                      <input
++                        id="expiry"
++                        type="text"
++                        maxLength={5}
++                        value={expiry}
++                        onChange={(e) => {
++                          setExpiry(e.target.value);
++                          if (paymentErrors.expiry) {
++                            setPaymentErrors((prev) => ({ ...prev, expiry: '' }));
++                          }
++                        }}
++                        placeholder="MM/YY"
++                        className="w-full px-3.5 py-2.5 text-sm bg-white border border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-400 text-slate-800 font-mono"
++                      />
++                      {paymentErrors.expiry && (
++                        <p className="text-xs text-rose-500 mt-1">{paymentErrors.expiry}</p>
++                      )}
++                    </div>
++
++                    <div>
++                      <label
++                        htmlFor="cvv"
++                        className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1"
++                      >
++                        CVV / CVC
++                      </label>
++                      <input
++                        id="cvv"
++                        type="password"
++                        maxLength={4}
++                        value={cvv}
++                        onChange={(e) => {
++                          setCvv(e.target.value);
++                          if (paymentErrors.cvv) {
++                            setPaymentErrors((prev) => ({ ...prev, cvv: '' }));
++                          }
++                        }}
++                        placeholder="123"
++                        className="w-full px-3.5 py-2.5 text-sm bg-white border border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-400 text-slate-800 font-mono"
++                      />
++                      {paymentErrors.cvv && (
++                        <p className="text-xs text-rose-500 mt-1">{paymentErrors.cvv}</p>
++                      )}
++                    </div>
++                  </div>
++                </div>
++              )}
++
++              {paymentMethod === 'apple_pay' && (
++                <div className="p-5 text-center bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
++                  <Smartphone className="w-8 h-8 mx-auto text-slate-900" />
++                  <p className="text-xs text-slate-600 font-medium">
++                    Simulated biometric authentication: Touch ID / Face ID will be requested upon clicking Place Order.
++                  </p>
++                </div>
++              )}
++
++              {paymentMethod === 'cod' && (
++                <div className="p-5 text-center bg-emerald-50/70 rounded-2xl border border-emerald-200 space-y-2">
++                  <Banknote className="w-8 h-8 mx-auto text-emerald-600" />
++                  <p className="text-xs text-emerald-800 font-medium">
++                    Pay upon physical delivery. Exact cash or courier mobile terminal accepted.
++                  </p>
++                </div>
++              )}
++
++              {/* Order Total recap */}
++              <div className="pt-2 flex items-center justify-between text-xs text-slate-600">
++                <span>Shipping to: {name} ({city})</span>
++                <span className="font-extrabold text-purple-700 text-sm">${total.toFixed(2)}</span>
++              </div>
++
++              {/* Action Buttons */}
++              <div className="pt-2 flex items-center gap-3">
++                <Button
++                  type="button"
++                  variant="outline"
++                  size="lg"
++                  onClick={() => setStep('shipping')}
++                  className="flex-1"
++                >
++                  <ArrowLeft className="w-4 h-4" />
++                  <span>Back</span>
++                </Button>
++                <Button
++                  type="submit"
++                  variant="primary"
++                  size="lg"
++                  className="flex-1 shadow-lg shadow-purple-500/20"
++                >
++                  <ShieldCheck className="w-4 h-4" />
++                  <span>Place Order</span>
++                </Button>
++              </div>
++            </form>
++          )}
++
++          {/* ========================================================= */}
++          {/* STEP 3: ORDER CONFIRMATION */}
++          {/* ========================================================= */}
++          {step === 'confirmation' && (
++            <div className="text-center space-y-5 animate-in zoom-in-95 duration-300">
++              <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 mx-auto flex items-center justify-center shadow-lg shadow-emerald-500/20">
++                <CheckCircle2 className="w-10 h-10" />
++              </div>
++
++              <div className="space-y-1">
++                <h3 className="text-xl font-black text-slate-900">Order Confirmed!</h3>
++                <p className="text-xs text-slate-500">
++                  Thank you for joining the AURA ecosystem. We have dispatched your confirmation receipt to{' '}
++                  <span className="font-bold text-slate-700">{email}</span>.
++                </p>
++              </div>
++
++              {/* Generated Order ID Pill */}
++              <div className="p-3.5 bg-purple-50/80 rounded-2xl border border-purple-200/80 flex items-center justify-between max-w-sm mx-auto">
++                <div className="text-left">
++                  <span className="text-[10px] uppercase font-bold text-slate-400 block">
++                    Order Reference ID
++                  </span>
++                  <span
++                    data-testid="checkout-order-id"
++                    className="font-mono text-base font-extrabold text-purple-700 tracking-wider"
++                  >
++                    {orderId}
++                  </span>
++                </div>
++                <div className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 flex items-center gap-1">
++                  <PackageCheck className="w-3 h-3" />
++                  <span>Confirmed</span>
++                </div>
++              </div>
++
++              {/* Simulated Dispatch Timeline */}
++              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/80 text-left text-xs space-y-2">
++                <div className="flex items-center gap-2 font-bold text-slate-800">
++                  <Truck className="w-4 h-4 text-purple-600" />
++                  <span>Simulated Delivery Telemetry</span>
++                </div>
++                <div className="grid grid-cols-3 gap-2 text-center text-[10px] pt-1">
++                  <div className="p-1.5 rounded-lg bg-emerald-100 text-emerald-800 font-bold">
++                    ✓ Verified
++                  </div>
++                  <div className="p-1.5 rounded-lg bg-purple-100 text-purple-800 font-bold animate-pulse">
++                    Preparing
++                  </div>
++                  <div className="p-1.5 rounded-lg bg-slate-100 text-slate-400">
++                    Dispatched
++                  </div>
++                </div>
++              </div>
++
++              {/* Summary Recap Box */}
++              <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200 text-left text-xs space-y-2">
++                <div className="flex justify-between font-bold text-slate-800 pb-1 border-b border-slate-200">
++                  <span>Delivery Address</span>
++                  <span>Amount Paid</span>
++                </div>
++                <div className="flex justify-between text-slate-600">
++                  <div>
++                    <p className="font-semibold text-slate-900">{name}</p>
++                    <p>{address}</p>
++                    <p>{city}</p>
++                  </div>
++                  <div className="text-right">
++                    <p className="text-base font-extrabold text-purple-700">
++                      ${total.toFixed(2)}
++                    </p>
++                    <p className="text-[10px] text-emerald-600 font-medium">Free Express Delivery</p>
++                  </div>
++                </div>
++              </div>
++
++              <Button
++                variant="primary"
++                size="lg"
++                onClick={handleFinishAndReset}
++                className="w-full shadow-lg shadow-purple-500/20"
++              >
++                <span>Continue Shopping</span>
++              </Button>
++            </div>
++          )}
++        </div>
++      </div>
++    </div>
++  );
++};
++
++export default CheckoutModal;
+diff --git a/src/hooks/useCart.ts b/src/hooks/useCart.ts
+new file mode 100644
+index 0000000..4cfba97
+--- /dev/null
++++ b/src/hooks/useCart.ts
+@@ -0,0 +1,231 @@
++import { useState, useEffect, useCallback, useMemo } from 'react';
++import { getItem, setItem } from '../utils/storage';
++import type { CartItem, CartState, Product, ColorOption, WatchFaceId } from '../types';
++
++export const CART_STORAGE_KEY = 'aura_cart_v1';
++export const DEFAULT_TAX_RATE = 0.08;
++export const DEFAULT_SHIPPING_COST = 0;
++
++export interface PromoCodeResult {
++  success: boolean;
++  message?: string;
++  error?: string;
++}
++
++export interface UseCartReturn {
++  items: CartItem[];
++  totalItems: number;
++  subtotal: number;
++  discountCode: string | null;
++  discountPercentage: number;
++  discountAmount: number;
++  taxRate: number;
++  tax: number;
++  shipping: number;
++  total: number;
++  addItem: (
++    product: Product,
++    color: ColorOption,
++    face: WatchFaceId,
++    quantity?: number
++  ) => void;
++  updateQuantity: (id: string, quantity: number) => void;
++  removeItem: (id: string) => void;
++  clearCart: () => void;
++  applyPromoCode: (code: string) => PromoCodeResult;
++  removePromoCode: () => void;
++}
++
++const defaultCartState: CartState = {
++  items: [],
++  discountCode: null,
++  discountPercentage: 0,
++  taxRate: DEFAULT_TAX_RATE,
++  shippingCost: DEFAULT_SHIPPING_COST,
++};
++
++export const useCart = (): UseCartReturn => {
++  // Initialize from storage with fallback recovery
++  const [cartState, setCartState] = useState<CartState>(() => {
++    const saved = getItem<CartState | null>(CART_STORAGE_KEY, null);
++    if (!saved || !Array.isArray(saved.items)) {
++      return defaultCartState;
++    }
++    return {
++      items: saved.items,
++      discountCode: saved.discountCode ?? null,
++      discountPercentage: typeof saved.discountPercentage === 'number' ? saved.discountPercentage : 0,
++      taxRate: typeof saved.taxRate === 'number' ? saved.taxRate : DEFAULT_TAX_RATE,
++      shippingCost: typeof saved.shippingCost === 'number' ? saved.shippingCost : DEFAULT_SHIPPING_COST,
++    };
++  });
++
++  // Sync to localStorage whenever cartState changes
++  useEffect(() => {
++    setItem(CART_STORAGE_KEY, cartState);
++  }, [cartState]);
++
++  // Derived calculations
++  const totalItems = useMemo(() => {
++    return cartState.items.reduce((sum, item) => sum + item.quantity, 0);
++  }, [cartState.items]);
++
++  const subtotal = useMemo(() => {
++    const raw = cartState.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
++    return Math.round(raw * 100) / 100;
++  }, [cartState.items]);
++
++  const discountAmount = useMemo(() => {
++    if (!cartState.discountCode || cartState.discountPercentage <= 0) return 0;
++    return Math.round(subtotal * cartState.discountPercentage * 100) / 100;
++  }, [subtotal, cartState.discountCode, cartState.discountPercentage]);
++
++  const discountedSubtotal = useMemo(() => {
++    return Math.max(0, subtotal - discountAmount);
++  }, [subtotal, discountAmount]);
++
++  const tax = useMemo(() => {
++    if (subtotal <= 0) return 0;
++    return Math.round(discountedSubtotal * cartState.taxRate * 100) / 100;
++  }, [discountedSubtotal, cartState.taxRate, subtotal]);
++
++  const shipping = cartState.shippingCost;
++
++  const total = useMemo(() => {
++    if (subtotal <= 0) return 0;
++    return Math.max(0, Math.round((discountedSubtotal + tax + shipping) * 100) / 100);
++  }, [discountedSubtotal, tax, shipping, subtotal]);
++
++  // Cart operations
++  const addItem = useCallback(
++    (product: Product, color: ColorOption, face: WatchFaceId, quantity = 1) => {
++      if (quantity <= 0) return;
++
++      const compositeId = `${product.id}-${color.id}-${face}`;
++
++      setCartState((prev) => {
++        const existingIndex = prev.items.findIndex((i) => i.id === compositeId);
++
++        if (existingIndex > -1) {
++          const updatedItems = [...prev.items];
++          updatedItems[existingIndex] = {
++            ...updatedItems[existingIndex],
++            quantity: updatedItems[existingIndex].quantity + quantity,
++          };
++          return { ...prev, items: updatedItems };
++        }
++
++        const newItem: CartItem = {
++          id: compositeId,
++          productId: product.id,
++          name: product.name,
++          category: product.category,
++          tier: product.tier,
++          price: product.price,
++          quantity,
++          selectedColor: color,
++          selectedFace: face,
++        };
++
++        return { ...prev, items: [...prev.items, newItem] };
++      });
++    },
++    []
++  );
++
++  const updateQuantity = useCallback((id: string, quantity: number) => {
++    setCartState((prev) => {
++      if (quantity <= 0) {
++        return {
++          ...prev,
++          items: prev.items.filter((item) => item.id !== id),
++        };
++      }
++
++      return {
++        ...prev,
++        items: prev.items.map((item) =>
++          item.id === id ? { ...item, quantity } : item
++        ),
++      };
++    });
++  }, []);
++
++  const removeItem = useCallback((id: string) => {
++    setCartState((prev) => ({
++      ...prev,
++      items: prev.items.filter((item) => item.id !== id),
++    }));
++  }, []);
++
++  const clearCart = useCallback(() => {
++    setCartState({
++      ...defaultCartState,
++      items: [],
++      discountCode: null,
++      discountPercentage: 0,
++    });
++  }, []);
++
++  const applyPromoCode = useCallback((code: string): PromoCodeResult => {
++    const normalized = code.trim().toUpperCase();
++
++    if (normalized === 'AURA10') {
++      setCartState((prev) => ({
++        ...prev,
++        discountCode: 'AURA10',
++        discountPercentage: 0.1,
++      }));
++      return {
++        success: true,
++        message: 'AURA10 applied: 10% discount on entire bag!',
++      };
++    }
++
++    if (normalized === 'LAUNCH20') {
++      setCartState((prev) => ({
++        ...prev,
++        discountCode: 'LAUNCH20',
++        discountPercentage: 0.2,
++      }));
++      return {
++        success: true,
++        message: 'LAUNCH20 applied: 20% launch discount on entire bag!',
++      };
++    }
++
++    return {
++      success: false,
++      error: 'Invalid promo code. Try AURA10 or LAUNCH20.',
++    };
++  }, []);
++
++  const removePromoCode = useCallback(() => {
++    setCartState((prev) => ({
++      ...prev,
++      discountCode: null,
++      discountPercentage: 0,
++    }));
++  }, []);
++
++  return {
++    items: cartState.items,
++    totalItems,
++    subtotal,
++    discountCode: cartState.discountCode,
++    discountPercentage: cartState.discountPercentage,
++    discountAmount,
++    taxRate: cartState.taxRate,
++    tax,
++    shipping,
++    total,
++    addItem,
++    updateQuantity,
++    removeItem,
++    clearCart,
++    applyPromoCode,
++    removePromoCode,
++  };
++};
++
++export default useCart;
+diff --git a/src/utils/storage.ts b/src/utils/storage.ts
+new file mode 100644
+index 0000000..bf1a329
+--- /dev/null
++++ b/src/utils/storage.ts
+@@ -0,0 +1,91 @@
++/**
++ * Safe localStorage wrapper with fallback handling for SSR and corrupt storage.
++ */
++
++const memoryStore = new Map<string, string>();
++
++/**
++ * Retrieve and parse JSON item from storage.
++ * If key does not exist, or if data is corrupt/unreadable, returns fallback.
++ */
++export function getItem<T>(key: string, fallback: T): T {
++  try {
++    if (typeof window === 'undefined' || !window.localStorage) {
++      const memVal = memoryStore.get(key);
++      if (memVal === undefined) return fallback;
++      return JSON.parse(memVal) as T;
++    }
++
++    const item = window.localStorage.getItem(key);
++    if (item === null) {
++      return fallback;
++    }
++    return JSON.parse(item) as T;
++  } catch (error) {
++    console.warn(`[storage] Error reading key "${key}", returning fallback:`, error);
++    return fallback;
++  }
++}
++
++/**
++ * Serialize and save value to storage.
++ * Returns true if write succeeded, false if quota/security or serialization error occurs.
++ */
++export function setItem<T>(key: string, value: T): boolean {
++  try {
++    const serialized = JSON.stringify(value);
++    if (typeof window !== 'undefined' && window.localStorage) {
++      window.localStorage.setItem(key, serialized);
++      return true;
++    }
++
++    memoryStore.set(key, serialized);
++    return true;
++  } catch (error) {
++    console.warn(`[storage] Error writing key "${key}":`, error);
++    return false;
++  }
++}
++
++/**
++ * Remove an item from storage by key.
++ */
++export function removeItem(key: string): boolean {
++  try {
++    if (typeof window === 'undefined' || !window.localStorage) {
++      memoryStore.delete(key);
++      return true;
++    }
++
++    window.localStorage.removeItem(key);
++    return true;
++  } catch (error) {
++    console.warn(`[storage] Error removing key "${key}":`, error);
++    return false;
++  }
++}
++
++/**
++ * Clear all storage items or in-memory backup.
++ */
++export function clearStorage(): boolean {
++  try {
++    if (typeof window === 'undefined' || !window.localStorage) {
++      memoryStore.clear();
++      return true;
++    }
++
++    window.localStorage.clear();
++    return true;
++  } catch (error) {
++    console.warn('[storage] Error clearing storage:', error);
++    return false;
++  }
++}
++
++export const storage = {
++  getItem,
++  setItem,
++  removeItem,
++  clear: clearStorage,
++};
+diff --git a/tests/cart.test.ts b/tests/cart.test.ts
+new file mode 100644
+index 0000000..9c1ffe7
+--- /dev/null
++++ b/tests/cart.test.ts
+@@ -0,0 +1,550 @@
++// @vitest-environment jsdom
++import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
++import React from 'react';
++import { render, screen, fireEvent, renderHook, act, cleanup } from '@testing-library/react';
++import { getItem, setItem, removeItem, clearStorage } from '../src/utils/storage';
++import { useCart } from '../src/hooks/useCart';
++import { CartItemRow } from '../src/components/cart/CartItemRow';
++import { CartDrawer } from '../src/components/cart/CartDrawer';
++import { CheckoutModal } from '../src/components/cart/CheckoutModal';
++import { products } from '../src/data/products';
++import type { CartItem, Product, ColorOption, WatchFaceId } from '../src/types';
++
++const h = React.createElement;
++
++const mockProductA: Product = products[0]; // Aura Band Standard ($49)
++const mockProductB: Product = products[4]; // Horizon Watch Pro Max ($399)
++
++describe('Task T4: Cart, Storage & Simulated Checkout Test Suite', () => {
++  beforeEach(() => {
++    window.localStorage.clear();
++    vi.restoreAllMocks();
++  });
++
++  afterEach(() => {
++    cleanup();
++  });
++
++  describe('Storage Abstraction (src/utils/storage.ts)', () => {
++    it('returns fallback value if key does not exist', () => {
++      const fallback = { items: [] };
++      const result = getItem('non_existent_key', fallback);
++      expect(result).toEqual(fallback);
++    });
++
++    it('stores and retrieves JSON serialized data correctly', () => {
++      const testData = { userId: 'u123', tags: ['titanium', 'ecg'] };
++      const success = setItem('aura_test_key', testData);
++      expect(success).toBe(true);
++
++      const retrieved = getItem('aura_test_key', null);
++      expect(retrieved).toEqual(testData);
++    });
++
++    it('removes item from storage', () => {
++      setItem('aura_temp_key', 'temp-value');
++      expect(getItem('aura_temp_key', null)).toBe('temp-value');
++
++      removeItem('aura_temp_key');
++      expect(getItem('aura_temp_key', null)).toBeNull();
++    });
++
++    it('handles and recovers from corrupted JSON in localStorage gracefully', () => {
++      window.localStorage.setItem('corrupted_key', '{"bad-json: definitely not valid');
++      const fallback = { fallback: true };
++
++      // Should not throw and should return fallback
++      const result = getItem('corrupted_key', fallback);
++      expect(result).toEqual(fallback);
++    });
++
++    it('survives quota or security errors when setItem throws', () => {
++      const setItemSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
++        throw new Error('QuotaExceededError');
++      });
++
++      const success = setItem('quota_key', { data: 'test' });
++      expect(success).toBe(false);
++
++      setItemSpy.mockRestore();
++    });
++  });
++
++  describe('useCart Hook State Management (src/hooks/useCart.ts)', () => {
++    it('initializes with default empty cart state', () => {
++      const { result } = renderHook(() => useCart());
++
++      expect(result.current.items).toEqual([]);
++      expect(result.current.totalItems).toBe(0);
++      expect(result.current.subtotal).toBe(0);
++      expect(result.current.tax).toBe(0);
++      expect(result.current.shipping).toBe(0);
++      expect(result.current.total).toBe(0);
++      expect(result.current.discountCode).toBeNull();
++      expect(result.current.discountPercentage).toBe(0);
++    });
++
++    it('adds item to cart with composite ID: ${product.id}-${color.id}-${face}', () => {
++      const { result } = renderHook(() => useCart());
++      const color: ColorOption = mockProductA.colors[0];
++      const face: WatchFaceId = 'minimal';
++
++      act(() => {
++        result.current.addItem(mockProductA, color, face);
++      });
++
++      expect(result.current.items).toHaveLength(1);
++      const expectedId = `${mockProductA.id}-${color.id}-${face}`;
++      expect(result.current.items[0].id).toBe(expectedId);
++      expect(result.current.items[0].productId).toBe(mockProductA.id);
++      expect(result.current.items[0].name).toBe(mockProductA.name);
++      expect(result.current.items[0].price).toBe(mockProductA.price);
++      expect(result.current.items[0].quantity).toBe(1);
++      expect(result.current.items[0].selectedColor).toEqual(color);
++      expect(result.current.items[0].selectedFace).toBe(face);
++      expect(result.current.totalItems).toBe(1);
++      expect(result.current.subtotal).toBe(mockProductA.price);
++    });
++
++    it('deduplicates variants: adding the identical product, color, and face increments quantity', () => {
++      const { result } = renderHook(() => useCart());
++      const color = mockProductA.colors[0];
++      const face: WatchFaceId = 'minimal';
++
++      act(() => {
++        result.current.addItem(mockProductA, color, face);
++      });
++      act(() => {
++        result.current.addItem(mockProductA, color, face, 2);
++      });
++
++      expect(result.current.items).toHaveLength(1);
++      expect(result.current.items[0].quantity).toBe(3);
++      expect(result.current.totalItems).toBe(3);
++      expect(result.current.subtotal).toBe(mockProductA.price * 3);
++    });
++
++    it('treats different color or watch face selections as distinct line items', () => {
++      const { result } = renderHook(() => useCart());
++      const color1 = mockProductA.colors[0];
++      const color2 = mockProductA.colors[1];
++
++      act(() => {
++        result.current.addItem(mockProductA, color1, 'minimal');
++      });
++      act(() => {
++        result.current.addItem(mockProductA, color2, 'minimal');
++      });
++      act(() => {
++        result.current.addItem(mockProductA, color1, 'neon');
++      });
++
++      expect(result.current.items).toHaveLength(3);
++      expect(result.current.totalItems).toBe(3);
++      expect(result.current.subtotal).toBe(mockProductA.price * 3);
++    });
++
++    it('updates quantity of an item and removes item when quantity reaches 0', () => {
++      const { result } = renderHook(() => useCart());
++      const color = mockProductA.colors[0];
++      const face: WatchFaceId = 'minimal';
++      const itemId = `${mockProductA.id}-${color.id}-${face}`;
++
++      act(() => {
++        result.current.addItem(mockProductA, color, face, 2);
++      });
++      expect(result.current.items[0].quantity).toBe(2);
++
++      // Increment
++      act(() => {
++        result.current.updateQuantity(itemId, 4);
++      });
++      expect(result.current.items[0].quantity).toBe(4);
++      expect(result.current.totalItems).toBe(4);
++
++      // Decrement to 1
++      act(() => {
++        result.current.updateQuantity(itemId, 1);
++      });
++      expect(result.current.items[0].quantity).toBe(1);
++
++      // Decrement to 0 triggers auto-removal
++      act(() => {
++        result.current.updateQuantity(itemId, 0);
++      });
++      expect(result.current.items).toHaveLength(0);
++      expect(result.current.totalItems).toBe(0);
++      expect(result.current.subtotal).toBe(0);
++    });
++
++    it('removes item explicitly with removeItem', () => {
++      const { result } = renderHook(() => useCart());
++      const colorA = mockProductA.colors[0];
++      const colorB = mockProductB.colors[0];
++
++      act(() => {
++        result.current.addItem(mockProductA, colorA, 'minimal');
++        result.current.addItem(mockProductB, colorB, 'chrono');
++      });
++
++      expect(result.current.items).toHaveLength(2);
++      const removeId = `${mockProductA.id}-${colorA.id}-minimal`;
++
++      act(() => {
++        result.current.removeItem(removeId);
++      });
++
++      expect(result.current.items).toHaveLength(1);
++      expect(result.current.items[0].productId).toBe(mockProductB.id);
++      expect(result.current.subtotal).toBe(mockProductB.price);
++    });
++
++    it('clears all items and resets promo discount with clearCart', () => {
++      const { result } = renderHook(() => useCart());
++      act(() => {
++        result.current.addItem(mockProductA, mockProductA.colors[0], 'minimal');
++        result.current.applyPromoCode('AURA10');
++      });
++
++      expect(result.current.items).toHaveLength(1);
++      expect(result.current.discountCode).toBe('AURA10');
++
++      act(() => {
++        result.current.clearCart();
++      });
++
++      expect(result.current.items).toEqual([]);
++      expect(result.current.discountCode).toBeNull();
++      expect(result.current.discountPercentage).toBe(0);
++      expect(result.current.subtotal).toBe(0);
++    });
++
++    it('evaluates promo code AURA10 for 10% discount', () => {
++      const { result } = renderHook(() => useCart());
++      act(() => {
++        result.current.addItem(mockProductB, mockProductB.colors[0], 'chrono', 1); // $399
++      });
++
++      act(() => {
++        const res = result.current.applyPromoCode('AURA10');
++        expect(res.success).toBe(true);
++      });
++
++      expect(result.current.discountCode).toBe('AURA10');
++      expect(result.current.discountPercentage).toBe(0.1);
++      expect(result.current.discountAmount).toBeCloseTo(39.9, 2);
++
++      // Subtotal: 399
++      // Discounted: 359.10
++      // Tax at 8%: 359.10 * 0.08 = 28.728 -> 28.73
++      // Total: 359.10 + 28.73 = 387.83
++      expect(result.current.tax).toBeCloseTo(28.73, 1);
++      expect(result.current.total).toBeCloseTo(387.83, 1);
++    });
++
++    it('evaluates promo code LAUNCH20 for 20% discount', () => {
++      const { result } = renderHook(() => useCart());
++      act(() => {
++        result.current.addItem(mockProductA, mockProductA.colors[0], 'minimal', 2); // $49 * 2 = $98
++      });
++
++      act(() => {
++        const res = result.current.applyPromoCode('LAUNCH20');
++        expect(res.success).toBe(true);
++      });
++
++      expect(result.current.discountCode).toBe('LAUNCH20');
++      expect(result.current.discountPercentage).toBe(0.2);
++      expect(result.current.discountAmount).toBeCloseTo(19.6, 2);
++
++      // Subtotal: 98
++      // Discounted: 78.4
++      // Tax at 8%: 78.4 * 0.08 = 6.27
++      // Total: 78.4 + 6.27 = 84.67
++      expect(result.current.tax).toBeCloseTo(6.27, 2);
++      expect(result.current.total).toBeCloseTo(84.67, 2);
++    });
++
++    it('rejects invalid promo codes with error message', () => {
++      const { result } = renderHook(() => useCart());
++
++      act(() => {
++        const res = result.current.applyPromoCode('FAKE99');
++        expect(res.success).toBe(false);
++        expect(res.error).toBeDefined();
++      });
++
++      expect(result.current.discountCode).toBeNull();
++      expect(result.current.discountPercentage).toBe(0);
++      expect(result.current.discountAmount).toBe(0);
++    });
++
++    it('allows removing an active promo code', () => {
++      const { result } = renderHook(() => useCart());
++      act(() => {
++        result.current.addItem(mockProductA, mockProductA.colors[0], 'minimal');
++        result.current.applyPromoCode('AURA10');
++      });
++
++      expect(result.current.discountCode).toBe('AURA10');
++
++      act(() => {
++        result.current.removePromoCode();
++      });
++
++      expect(result.current.discountCode).toBeNull();
++      expect(result.current.discountPercentage).toBe(0);
++      expect(result.current.discountAmount).toBe(0);
++    });
++
++    it('persists cart changes to localStorage key aura_cart_v1', () => {
++      const { result } = renderHook(() => useCart());
++      act(() => {
++        result.current.addItem(mockProductA, mockProductA.colors[0], 'minimal', 2);
++      });
++
++      const raw = window.localStorage.getItem('aura_cart_v1');
++      expect(raw).toBeTruthy();
++      const parsed = JSON.parse(raw!);
++      expect(parsed.items).toHaveLength(1);
++      expect(parsed.items[0].quantity).toBe(2);
++    });
++
++    it('restores stored cart state from localStorage on initialization', () => {
++      const initialItem: CartItem = {
++        id: `${mockProductA.id}-${mockProductA.colors[0].id}-minimal`,
++        productId: mockProductA.id,
++        name: mockProductA.name,
++        category: mockProductA.category,
++        tier: mockProductA.tier,
++        price: mockProductA.price,
++        quantity: 3,
++        selectedColor: mockProductA.colors[0],
++        selectedFace: 'minimal',
++      };
++
++      window.localStorage.setItem(
++        'aura_cart_v1',
++        JSON.stringify({
++          items: [initialItem],
++          discountCode: 'AURA10',
++          discountPercentage: 0.1,
++          taxRate: 0.08,
++          shippingCost: 0,
++        })
++      );
++
++      const { result } = renderHook(() => useCart());
++
++      expect(result.current.items).toHaveLength(1);
++      expect(result.current.totalItems).toBe(3);
++      expect(result.current.discountCode).toBe('AURA10');
++      expect(result.current.discountPercentage).toBe(0.1);
++    });
++
++    it('recovers safely when aura_cart_v1 in localStorage is corrupted', () => {
++      window.localStorage.setItem('aura_cart_v1', '{corrupt json...');
++      const { result } = renderHook(() => useCart());
++
++      expect(result.current.items).toEqual([]);
++      expect(result.current.totalItems).toBe(0);
++    });
++  });
++
++  describe('Cart UI Components (CartItemRow, CartDrawer, CheckoutModal)', () => {
++    const sampleItem: CartItem = {
++      id: 'item-1',
++      productId: mockProductA.id,
++      name: mockProductA.name,
++      category: mockProductA.category,
++      tier: mockProductA.tier,
++      price: mockProductA.price,
++      quantity: 2,
++      selectedColor: mockProductA.colors[0],
++      selectedFace: 'minimal',
++    };
++
++    it('CartItemRow renders item details, steppers, and triggers quantity/remove callbacks', () => {
++      const onUpdateQty = vi.fn();
++      const onRemove = vi.fn();
++
++      render(
++        h(CartItemRow, {
++          item: sampleItem,
++          onUpdateQuantity: onUpdateQty,
++          onRemove: onRemove,
++        })
++      );
++
++      // Name and price
++      expect(screen.getByText(mockProductA.name)).toBeDefined();
++      expect(screen.getByText(`$${mockProductA.price * 2}`)).toBeDefined();
++
++      // Color and face tags
++      expect(screen.getByText(sampleItem.selectedColor.name)).toBeDefined();
++      expect(screen.getByText(/minimal/i)).toBeDefined();
++
++      // Quantity stepper buttons
++      const decBtn = screen.getByRole('button', { name: /decrease quantity/i });
++      const incBtn = screen.getByRole('button', { name: /increase quantity/i });
++      const removeBtn = screen.getByRole('button', { name: /remove item/i });
++
++      fireEvent.click(incBtn);
++      expect(onUpdateQty).toHaveBeenCalledWith('item-1', 3);
++
++      fireEvent.click(decBtn);
++      expect(onUpdateQty).toHaveBeenCalledWith('item-1', 1);
++
++      fireEvent.click(removeBtn);
++      expect(onRemove).toHaveBeenCalledWith('item-1');
++    });
++
++    it('CartDrawer renders empty state when cart has no items', () => {
++      const onClose = vi.fn();
++      const onProceed = vi.fn();
++
++      render(
++        h(CartDrawer, {
++          isOpen: true,
++          onClose: onClose,
++          onProceedToCheckout: onProceed,
++          items: [],
++          totalItems: 0,
++          subtotal: 0,
++          discountCode: null,
++          discountAmount: 0,
++          tax: 0,
++          shipping: 0,
++          total: 0,
++          onUpdateQuantity: vi.fn(),
++          onRemoveItem: vi.fn(),
++          onApplyPromoCode: vi.fn(),
++          onRemovePromoCode: vi.fn(),
++        })
++      );
++
++      expect(screen.getByText(/Your bag is empty/i)).toBeDefined();
++      const continueBtn = screen.getByRole('button', { name: /explore wearables/i });
++      fireEvent.click(continueBtn);
++      expect(onClose).toHaveBeenCalled();
++    });
++
++    it('CartDrawer renders items, summary, promo input, and triggers checkout', () => {
++      const onProceed = vi.fn();
++      const onApplyPromo = vi.fn().mockReturnValue({ success: true });
++      const onRemovePromo = vi.fn();
++
++      render(
++        h(CartDrawer, {
++          isOpen: true,
++          onClose: vi.fn(),
++          onProceedToCheckout: onProceed,
++          items: [sampleItem],
++          totalItems: 2,
++          subtotal: 98,
++          discountCode: null,
++          discountAmount: 0,
++          tax: 7.84,
++          shipping: 0,
++          total: 105.84,
++          onUpdateQuantity: vi.fn(),
++          onRemoveItem: vi.fn(),
++          onApplyPromoCode: onApplyPromo,
++          onRemovePromoCode: onRemovePromo,
++        })
++      );
++
++      // Renders item
++      expect(screen.getByText(mockProductA.name)).toBeDefined();
++      expect(screen.getByText('$98.00')).toBeDefined(); // subtotal
++      expect(screen.getByText('FREE')).toBeDefined(); // shipping
++      expect(screen.getByText('$105.84')).toBeDefined(); // total
++
++      // Promo input
++      const promoInput = screen.getByPlaceholderText(/promo code/i);
++      const applyBtn = screen.getByRole('button', { name: /apply/i });
++
++      fireEvent.change(promoInput, { target: { value: 'AURA10' } });
++      fireEvent.click(applyBtn);
++      expect(onApplyPromo).toHaveBeenCalledWith('AURA10');
++
++      // Proceed to checkout CTA
++      const checkoutBtn = screen.getByRole('button', { name: /proceed to checkout/i });
++      fireEvent.click(checkoutBtn);
++      expect(onProceed).toHaveBeenCalledTimes(1);
++    });
++
++    it('CheckoutModal step progression: Shipping -> Payment -> Order Confirmation', () => {
++      const onComplete = vi.fn();
++      const onClose = vi.fn();
++
++      render(
++        h(CheckoutModal, {
++          isOpen: true,
++          onClose: onClose,
++          onCompleteOrder: onComplete,
++          items: [sampleItem],
++          subtotal: 98,
++          discountCode: 'AURA10',
++          discountAmount: 9.8,
++          tax: 7.06,
++          shipping: 0,
++          total: 95.26,
++        })
++      );
++
++      // STEP 1: Shipping Details
++      expect(screen.getByText(/Shipping Information/i)).toBeDefined();
++
++      const nameInput = screen.getByLabelText(/full name/i);
++      const emailInput = screen.getByLabelText(/email address/i);
++      const addressInput = screen.getByLabelText(/street address/i);
++      const cityInput = screen.getByLabelText(/city/i);
++
++      fireEvent.change(nameInput, { target: { value: 'Jane Doe' } });
++      fireEvent.change(emailInput, { target: { value: 'jane@aura.test' } });
++      fireEvent.change(addressInput, { target: { value: '100 Silicon Way' } });
++      fireEvent.change(cityInput, { target: { value: 'San Francisco' } });
++
++      const nextToPaymentBtn = screen.getByRole('button', { name: /continue to payment/i });
++      fireEvent.click(nextToPaymentBtn);
++
++      // STEP 2: Payment Method
++      expect(screen.getByText(/Payment Method/i)).toBeDefined();
++      expect(screen.getByText(/Credit Card/i)).toBeDefined();
++      expect(screen.getByText(/Apple Pay/i)).toBeDefined();
++      expect(screen.getByText(/Cash on Delivery/i)).toBeDefined();
++
++      // Fill mock credit card details
++      const cardNumberInput = screen.getByLabelText(/card number/i);
++      const expiryInput = screen.getByLabelText(/expiry/i);
++      const cvvInput = screen.getByLabelText(/cvv|cvc/i);
++
++      fireEvent.change(cardNumberInput, { target: { value: '4111 2222 3333 4444' } });
++      fireEvent.change(expiryInput, { target: { value: '12/28' } });
++      fireEvent.change(cvvInput, { target: { value: '123' } });
++
++      const placeOrderBtn = screen.getByRole('button', { name: /place order/i });
++      fireEvent.click(placeOrderBtn);
++
++      // STEP 3: Order Confirmation
++      expect(screen.getByText(/Order Confirmed/i)).toBeDefined();
++      // Verifies generated Order ID format AURA-XXXXXX
++      const orderIdEl = screen.getByTestId('checkout-order-id');
++      expect(orderIdEl.textContent).toMatch(/^AURA-[A-Z0-9]{6}$/);
++
++      // Verifies order summary recap
++      expect(screen.getByText('Jane Doe')).toBeDefined();
++      expect(screen.getByText(/100 Silicon Way/i)).toBeDefined();
++      expect(screen.getByText(/San Francisco/i)).toBeDefined();
++      expect(screen.getByText('$95.26')).toBeDefined();
++
++      // Continue Shopping CTA
++      const continueShoppingBtn = screen.getByRole('button', { name: /continue shopping/i });
++      fireEvent.click(continueShoppingBtn);
++
++      // onCompleteOrder should have been called to clear cart
++      expect(onComplete).toHaveBeenCalledTimes(1);
++    });
++  });
++});

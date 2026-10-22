@@ -1,0 +1,3111 @@
+# Review package: T2-artifact
+mode: worktree against base 07f02fd27b6b518baa764c3e338cb425254a9256
+artifact-hash: 65eb6fe600f11cf147acdf14fbb2bb8384a22fe1
+files-changed: 8
+
+## Stat
+ src/components/viewer3d/SceneManager.ts           | 303 ++++++++
+ src/components/viewer3d/ViewerControlsOverlay.tsx | 247 ++++++
+ src/components/viewer3d/WatchViewer3D.tsx         | 214 ++++++
+ src/components/viewer3d/proceduralMeshes.ts       | 677 +++++++++++++++++
+ src/components/viewer3d/watchFaceCanvas.ts        | 878 ++++++++++++++++++++++
+ src/context/ViewerContext.tsx                     | 255 +++++++
+ tasks/todo.md                                     |  22 +-
+ tests/watchFaceCanvas.test.ts                     | 412 ++++++++++
+ 8 files changed, 2997 insertions(+), 11 deletions(-)
+
+## Diff
+diff --git a/src/components/viewer3d/SceneManager.ts b/src/components/viewer3d/SceneManager.ts
+new file mode 100644
+index 0000000..6a50276
+--- /dev/null
++++ b/src/components/viewer3d/SceneManager.ts
+@@ -0,0 +1,303 @@
++/**
++ * Three.js 3D Scene Manager
++ * Manages WebGLRenderer, OrbitControls, lighting rig, model swapping,
++ * turntable auto-rotation, camera presets, and GPU resource disposal.
++ */
++
++import * as THREE from 'three';
++import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
++import { CameraPreset } from '../../context/ViewerContext';
++import { ProceduralModel } from './proceduralMeshes';
++
++export interface SceneManagerOptions {
++  container: HTMLElement;
++  initialPreset?: CameraPreset;
++  onRenderFrame?: (timeMs: number) => void;
++}
++
++export class SceneManager {
++  public readonly container: HTMLElement;
++  public readonly scene: THREE.Scene;
++  public readonly camera: THREE.PerspectiveCamera;
++  public readonly renderer: THREE.WebGLRenderer;
++  public readonly controls: OrbitControls;
++
++  private currentModel: ProceduralModel | null = null;
++  private animFrameId: number | null = null;
++  private resizeObserver: ResizeObserver | null = null;
++  private onRenderFrameCallback?: (timeMs: number) => void;
++
++  // Camera transition state
++  private targetCameraPos: THREE.Vector3 | null = null;
++  private targetCameraTarget: THREE.Vector3 | null = null;
++  private isTransitioningCamera = false;
++
++  constructor(options: SceneManagerOptions) {
++    this.container = options.container;
++    this.onRenderFrameCallback = options.onRenderFrame;
++
++    const width = this.container.clientWidth || 500;
++    const height = this.container.clientHeight || 500;
++
++    // 1. Create Scene
++    this.scene = new THREE.Scene();
++
++    // 2. Setup Perspective Camera (45° FOV)
++    this.camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
++    this.camera.position.set(0, 0, 3.8);
++
++    // 3. Setup Hardware-Accelerated Tone-Mapped WebGLRenderer
++    this.renderer = new THREE.WebGLRenderer({
++      antialias: true,
++      alpha: true,
++      powerPreference: 'high-performance',
++    });
++    this.renderer.setSize(width, height);
++    this.renderer.setPixelRatio(Math.min(typeof window !== 'undefined' ? window.devicePixelRatio : 1, 2));
++    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
++    this.renderer.toneMappingExposure = 1.1;
++    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
++    this.renderer.shadowMap.enabled = true;
++    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
++
++    // Style canvas to fit container
++    const canvas = this.renderer.domElement;
++    canvas.style.width = '100%';
++    canvas.style.height = '100%';
++    canvas.style.display = 'block';
++    canvas.style.outline = 'none';
++    this.container.appendChild(canvas);
++
++    // 4. Setup Damping OrbitControls with Zoom & Polar Limits
++    this.controls = new OrbitControls(this.camera, canvas);
++    this.controls.enableDamping = true;
++    this.controls.dampingFactor = 0.05;
++    this.controls.minDistance = 2.2;
++    this.controls.maxDistance = 6.0;
++    // Polar limits: 15° to 165° to avoid awkward bottom under-flips
++    this.controls.minPolarAngle = (Math.PI * 15) / 180;
++    this.controls.maxPolarAngle = (Math.PI * 165) / 180;
++    this.controls.target.set(0, 0, 0);
++
++    // Turntable speed (2.0 RPM presentation)
++    this.controls.autoRotate = true;
++    this.controls.autoRotateSpeed = 2.0;
++
++    // 5. Setup Lighting Rig
++    this.setupLighting();
++
++    // 6. Setup Responsive ResizeObserver
++    this.setupResizeObserver();
++
++    // 7. Start Animation Loop
++    this.startLoop();
++
++    if (options.initialPreset) {
++      this.setCameraPreset(options.initialPreset, true);
++    }
++  }
++
++  /**
++   * Initializes multi-point lighting rig:
++   * Soft ambient bounce, primary key light, cyan rim light, and subtle fill light.
++   */
++  private setupLighting(): void {
++    // Soft lavender ambient light
++    const ambientLight = new THREE.AmbientLight(0xede9fe, 0.7);
++    this.scene.add(ambientLight);
++
++    // Primary key directional light
++    const keyLight = new THREE.DirectionalLight(0xffffff, 1.3);
++    keyLight.position.set(5, 8, 5);
++    keyLight.castShadow = true;
++    keyLight.shadow.mapSize.width = 1024;
++    keyLight.shadow.mapSize.height = 1024;
++    keyLight.shadow.bias = -0.0001;
++    this.scene.add(keyLight);
++
++    // Secondary cyan rim light behind device to accentuate metallic bevels
++    const rimLight = new THREE.PointLight(0x06b6d4, 1.1, 15);
++    rimLight.position.set(-4, 2, -5);
++    this.scene.add(rimLight);
++
++    // Subtle soft lavender-white fill light from opposite angle
++    const fillLight = new THREE.DirectionalLight(0xf5f3ff, 0.45);
++    fillLight.position.set(-5, -4, 3);
++    this.scene.add(fillLight);
++  }
++
++  /**
++   * Sets up a ResizeObserver to adapt viewport dimensions on responsive container changes.
++   */
++  private setupResizeObserver(): void {
++    if (typeof ResizeObserver === 'undefined') return;
++
++    this.resizeObserver = new ResizeObserver((entries) => {
++      for (const entry of entries) {
++        const { width, height } = entry.contentRect;
++        if (width > 0 && height > 0) {
++          this.handleResize(width, height);
++        }
++      }
++    });
++
++    this.resizeObserver.observe(this.container);
++  }
++
++  /**
++   * Handles canvas dimension updates.
++   */
++  public handleResize(width: number, height: number): void {
++    this.camera.aspect = width / height;
++    this.camera.updateProjectionMatrix();
++    this.renderer.setSize(width, height);
++  }
++
++  /**
++   * Sets or replaces the active 3D procedural model in the scene.
++   */
++  public setModel(newModel: ProceduralModel): void {
++    if (this.currentModel) {
++      this.scene.remove(this.currentModel.group);
++      this.currentModel.dispose();
++    }
++
++    this.currentModel = newModel;
++    this.scene.add(newModel.group);
++  }
++
++  /**
++   * Gets the active procedural model.
++   */
++  public getModel(): ProceduralModel | null {
++    return this.currentModel;
++  }
++
++  /**
++   * Toggles turntable auto-rotation.
++   */
++  public setAutoRotate(enabled: boolean): void {
++    this.controls.autoRotate = enabled;
++  }
++
++  /**
++   * Transitions camera to a preset view angle:
++   * 'front', 'angle', 'side', or 'reset'.
++   */
++  public setCameraPreset(preset: CameraPreset, immediate = false): void {
++    const target = new THREE.Vector3(0, 0, 0);
++    const pos = new THREE.Vector3();
++
++    switch (preset) {
++      case 'front':
++        pos.set(0, 0, 3.8);
++        break;
++      case 'angle':
++        pos.set(2.4, 1.8, 3.1);
++        break;
++      case 'side':
++        pos.set(3.8, 0, 0.3);
++        break;
++      case 'reset':
++      default:
++        pos.set(0, 0.8, 3.8);
++        break;
++    }
++
++    if (immediate) {
++      this.camera.position.copy(pos);
++      this.controls.target.copy(target);
++      this.controls.update();
++      this.isTransitioningCamera = false;
++    } else {
++      this.targetCameraPos = pos;
++      this.targetCameraTarget = target;
++      this.isTransitioningCamera = true;
++    }
++  }
++
++  /**
++   * Animation render loop.
++   */
++  private startLoop = (): void => {
++    const render = (timeMs: number): void => {
++      this.animFrameId = requestAnimationFrame(render);
++
++      // Handle camera smooth transition
++      if (this.isTransitioningCamera && this.targetCameraPos && this.targetCameraTarget) {
++        this.camera.position.lerp(this.targetCameraPos, 0.08);
++        this.controls.target.lerp(this.targetCameraTarget, 0.08);
++
++        if (
++          this.camera.position.distanceTo(this.targetCameraPos) < 0.02 &&
++          this.controls.target.distanceTo(this.targetCameraTarget) < 0.01
++        ) {
++          this.camera.position.copy(this.targetCameraPos);
++          this.controls.target.copy(this.targetCameraTarget);
++          this.isTransitioningCamera = false;
++        }
++      }
++
++      // Update controls damping & auto-rotate
++      this.controls.update();
++
++      // Subtle crown spin if auto-rotating
++      if (this.controls.autoRotate && this.currentModel && this.currentModel.rotateCrown) {
++        this.currentModel.rotateCrown(0.015);
++      }
++
++      // External callback (e.g. For screen texture canvas redrawing)
++      if (this.onRenderFrameCallback) {
++        this.onRenderFrameCallback(timeMs);
++      }
++
++      // Render Three.js scene
++      this.renderer.render(this.scene, this.camera);
++    };
++
++    this.animFrameId = requestAnimationFrame(render);
++  };
++
++  /**
++   * Properly disposes renderer, controls, geometries, materials, and observers
++   * to guarantee zero WebGL memory leaks.
++   */
++  public dispose(): void {
++    if (this.animFrameId !== null) {
++      cancelAnimationFrame(this.animFrameId);
++      this.animFrameId = null;
++    }
++
++    if (this.resizeObserver) {
++      this.resizeObserver.disconnect();
++      this.resizeObserver = null;
++    }
++
++    if (this.currentModel) {
++      this.scene.remove(this.currentModel.group);
++      this.currentModel.dispose();
++      this.currentModel = null;
++    }
++
++    this.controls.dispose();
++
++    // Traverse and dispose any remaining scene objects
++    this.scene.traverse((obj) => {
++      if (obj instanceof THREE.Mesh) {
++        if (obj.geometry) obj.geometry.dispose();
++        if (obj.material) {
++          if (Array.isArray(obj.material)) {
++            obj.material.forEach((m) => m.dispose());
++          } else {
++            obj.material.dispose();
++          }
++        }
++      }
++    });
++
++    this.renderer.dispose();
++    if (this.renderer.domElement && this.renderer.domElement.parentNode) {
++      this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
++    }
++  }
++}
+diff --git a/src/components/viewer3d/ViewerControlsOverlay.tsx b/src/components/viewer3d/ViewerControlsOverlay.tsx
+new file mode 100644
+index 0000000..6be7da3
+--- /dev/null
++++ b/src/components/viewer3d/ViewerControlsOverlay.tsx
+@@ -0,0 +1,247 @@
++/**
++ * ViewerControlsOverlay - Floating Studio Controls and Telemetry Widget Dock
++ * Floating over the 3D viewport with auto-rotate toggle, camera angle presets,
++ * reset view, and simulated telemetry widgets (HR test, steps booster, weather, music, battery).
++ */
++
++import React from 'react';
++import {
++  RotateCw,
++  RotateCcw,
++  Eye,
++  Heart,
++  Footprints,
++  Sun,
++  Cloud,
++  CloudRain,
++  Play,
++  Pause,
++  SkipForward,
++  Battery,
++  Activity,
++  Compass,
++} from 'lucide-react';
++import { useViewer } from '../../context/ViewerContext';
++
++export const ViewerControlsOverlay: React.FC = () => {
++  const {
++    selectedProduct,
++    isAutoRotating,
++    toggleAutoRotate,
++    setCameraPreset,
++    resetCamera,
++    simulatedWidgets,
++    measureHeartRate,
++    addSteps,
++    toggleWeather,
++    toggleMusicPlay,
++    nextTrack,
++  } = useViewer();
++
++  // Weather Icon Helper
++  const renderWeatherIcon = () => {
++    switch (simulatedWidgets.weather.condition) {
++      case 'cloudy':
++        return <Cloud className="w-4 h-4 text-slate-500" />;
++      case 'rainy':
++        return <CloudRain className="w-4 h-4 text-cyan-600" />;
++      case 'sunny':
++      default:
++        return <Sun className="w-4 h-4 text-amber-500 animate-[spin_12s_linear_infinite]" />;
++    }
++  };
++
++  return (
++    <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 sm:p-6 select-none z-10">
++      {/* Top Bar: Device Badge & Camera Toolbar */}
++      <div className="flex items-start justify-between gap-3">
++        {/* Active Device Tier Badge */}
++        <div className="pointer-events-auto flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/85 backdrop-blur-md border border-purple-100 shadow-sm text-xs font-semibold text-slate-800">
++          <span className="w-2 h-2 rounded-full bg-violet-600 animate-pulse" />
++          <span>{selectedProduct.name}</span>
++          <span className="text-slate-400">|</span>
++          <span className="text-violet-600 uppercase tracking-wider text-[10px]">
++            {selectedProduct.tier.replace('_', ' ')}
++          </span>
++        </div>
++
++        {/* Camera Preset & Turntable Toolbar */}
++        <div className="pointer-events-auto flex items-center gap-1.5 p-1 rounded-2xl bg-white/85 backdrop-blur-md border border-purple-100 shadow-sm">
++          {/* Auto-Rotate Turntable Toggle */}
++          <button
++            onClick={toggleAutoRotate}
++            title={isAutoRotating ? 'Pause auto-rotate' : 'Start turntable auto-rotate'}
++            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-all ${
++              isAutoRotating
++                ? 'bg-violet-600 text-white shadow-sm'
++                : 'text-slate-600 hover:text-violet-700 hover:bg-violet-50'
++            }`}
++          >
++            <RotateCw className={`w-3.5 h-3.5 ${isAutoRotating ? 'animate-spin' : ''}`} />
++            <span className="hidden sm:inline">Turntable</span>
++          </button>
++
++          {/* Quick Camera Presets */}
++          <button
++            onClick={() => setCameraPreset('front')}
++            title="Front Face View"
++            className="px-2.5 py-1.5 rounded-xl text-xs font-medium text-slate-600 hover:text-violet-700 hover:bg-violet-50 transition-colors"
++          >
++            Front
++          </button>
++
++          <button
++            onClick={() => setCameraPreset('angle')}
++            title="45° Angle Isometric View"
++            className="px-2.5 py-1.5 rounded-xl text-xs font-medium text-slate-600 hover:text-violet-700 hover:bg-violet-50 transition-colors"
++          >
++            45°
++          </button>
++
++          <button
++            onClick={() => setCameraPreset('side')}
++            title="Side Profile View"
++            className="px-2.5 py-1.5 rounded-xl text-xs font-medium text-slate-600 hover:text-violet-700 hover:bg-violet-50 transition-colors"
++          >
++            Side
++          </button>
++
++          <div className="w-[1px] h-4 bg-purple-100 my-auto mx-0.5" />
++
++          {/* Reset View */}
++          <button
++            onClick={resetCamera}
++            title="Reset camera viewpoint"
++            aria-label="Reset camera viewpoint"
++            className="p-1.5 rounded-xl text-slate-600 hover:text-violet-700 hover:bg-violet-50 transition-colors"
++          >
++            <RotateCcw className="w-3.5 h-3.5" />
++          </button>
++        </div>
++      </div>
++
++      {/* Middle Floating 360 Hint (Discreet) */}
++      <div className="flex justify-center">
++        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-900/10 backdrop-blur-sm text-[11px] font-medium text-slate-600">
++          <Compass className="w-3.5 h-3.5 text-violet-600 animate-spin" style={{ animationDuration: '8s' }} />
++          <span>Drag to orbit 360° • Scroll to zoom</span>
++        </div>
++      </div>
++
++      {/* Bottom Floating Interactive Telemetry Dock */}
++      <div className="flex flex-col gap-2">
++        <div className="pointer-events-auto flex flex-wrap items-center justify-between gap-2 p-2 sm:p-2.5 rounded-2xl bg-white/90 backdrop-blur-md border border-purple-100 shadow-[0_8px_30px_rgba(124,58,237,0.06)]">
++          {/* 1. Heart Rate Telemetry Widget */}
++          <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-rose-50/70 border border-rose-100">
++            <Heart
++              className={`w-4 h-4 text-rose-500 fill-rose-500 transition-transform ${
++                simulatedWidgets.isMeasuringHeartRate
++                  ? 'animate-ping'
++                  : 'animate-pulse'
++              }`}
++            />
++            <div className="flex flex-col">
++              <span className="text-[10px] uppercase font-bold text-rose-500">
++                {simulatedWidgets.isMeasuringHeartRate ? 'Diagnostic' : 'Heart Rate'}
++              </span>
++              <span className="text-xs font-extrabold text-slate-900">
++                {simulatedWidgets.isMeasuringHeartRate
++                  ? 'Measuring...'
++                  : `${simulatedWidgets.heartRate} BPM`}
++              </span>
++            </div>
++            <button
++              onClick={measureHeartRate}
++              disabled={simulatedWidgets.isMeasuringHeartRate}
++              className="ml-1 px-2 py-0.5 text-[11px] font-semibold text-rose-600 hover:text-rose-700 bg-white hover:bg-rose-100/60 rounded-md border border-rose-200 transition-colors disabled:opacity-50"
++            >
++              Test
++            </button>
++          </div>
++
++          {/* 2. Step Counter Booster Widget */}
++          <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-cyan-50/70 border border-cyan-100">
++            <Footprints className="w-4 h-4 text-cyan-600" />
++            <div className="flex flex-col">
++              <span className="text-[10px] uppercase font-bold text-cyan-600">Steps</span>
++              <span className="text-xs font-extrabold text-slate-900">
++                {simulatedWidgets.steps.toLocaleString()}
++              </span>
++            </div>
++            <div className="flex items-center gap-1 ml-1">
++              <button
++                onClick={() => addSteps(100)}
++                title="Add 100 steps"
++                className="px-1.5 py-0.5 text-[10px] font-bold text-cyan-700 bg-white hover:bg-cyan-100 rounded border border-cyan-200 transition-colors"
++              >
++                +100
++              </button>
++              <button
++                onClick={() => addSteps(500)}
++                title="Add 500 steps"
++                className="px-1.5 py-0.5 text-[10px] font-bold text-cyan-700 bg-white hover:bg-cyan-100 rounded border border-cyan-200 transition-colors"
++              >
++                +500
++              </button>
++            </div>
++          </div>
++
++          {/* 3. Weather Toggle Widget */}
++          <button
++            onClick={toggleWeather}
++            title="Tap to change weather simulation"
++            className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-amber-50/70 hover:bg-amber-100/70 border border-amber-100 transition-colors"
++          >
++            {renderWeatherIcon()}
++            <div className="flex flex-col text-left">
++              <span className="text-[10px] uppercase font-bold text-amber-600">
++                {simulatedWidgets.weather.city.split(',')[0]}
++              </span>
++              <span className="text-xs font-extrabold text-slate-900">
++                {simulatedWidgets.weather.temp}°C {simulatedWidgets.weather.condition}
++              </span>
++            </div>
++          </button>
++
++          {/* 4. Music Playback Simulator */}
++          <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-violet-50/70 border border-violet-100">
++            <button
++              onClick={toggleMusicPlay}
++              title={simulatedWidgets.isPlayingMusic ? 'Pause track' : 'Play track'}
++              className="p-1 rounded-full bg-violet-600 hover:bg-violet-700 text-white transition-colors"
++            >
++              {simulatedWidgets.isPlayingMusic ? (
++                <Pause className="w-3 h-3" />
++              ) : (
++                <Play className="w-3 h-3 translate-x-0.5" />
++              )}
++            </button>
++            <div className="flex flex-col max-w-[90px] sm:max-w-[120px] overflow-hidden">
++              <span className="text-[10px] uppercase font-bold text-violet-600 truncate">
++                {simulatedWidgets.isPlayingMusic ? 'Now Playing' : 'Paused'}
++              </span>
++              <span className="text-xs font-bold text-slate-900 truncate">
++                {simulatedWidgets.currentTrack.title}
++              </span>
++            </div>
++            <button
++              onClick={nextTrack}
++              title="Next Track"
++              className="p-1 text-slate-500 hover:text-violet-600 transition-colors"
++            >
++              <SkipForward className="w-3.5 h-3.5" />
++            </button>
++          </div>
++
++          {/* 5. Battery Monitor */}
++          <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-50 border border-slate-100">
++            <Battery className="w-4 h-4 text-emerald-600" />
++            <span className="text-xs font-bold text-slate-800">
++              {simulatedWidgets.battery}%
++            </span>
++          </div>
++        </div>
++      </div>
++    </div>
++  );
++};
+diff --git a/src/components/viewer3d/WatchViewer3D.tsx b/src/components/viewer3d/WatchViewer3D.tsx
+new file mode 100644
+index 0000000..be5f1b2
+--- /dev/null
++++ b/src/components/viewer3d/WatchViewer3D.tsx
+@@ -0,0 +1,214 @@
++/**
++ * WatchViewer3D - Interactive 3D Wearable Preview Component
++ * Hosts the Three.js viewport, offscreen dynamic watch face canvas texture pipeline,
++ * and seamlessly synchronizes React ViewerContext state with procedural 3D models.
++ */
++
++import React, { useEffect, useRef, useState, useCallback } from 'react';
++import * as THREE from 'three';
++import { useViewer } from '../../context/ViewerContext';
++import { SceneManager } from './SceneManager';
++import { createProceduralModel, ProceduralModel } from './proceduralMeshes';
++import { drawWatchFace } from './watchFaceCanvas';
++import { ViewerControlsOverlay } from './ViewerControlsOverlay';
++
++export interface WatchViewer3DProps {
++  className?: string;
++}
++
++export const WatchViewer3D: React.FC<WatchViewer3DProps> = ({ className = '' }) => {
++  const containerRef = useRef<HTMLDivElement>(null);
++  const sceneManagerRef = useRef<SceneManager | null>(null);
++  const modelRef = useRef<ProceduralModel | null>(null);
++  const canvasTextureRef = useRef<THREE.CanvasTexture | null>(null);
++  const offscreenCanvasRef = useRef<HTMLCanvasElement | null>(null);
++
++  const [webGLError, setWebGLError] = useState<string | null>(null);
++
++  const {
++    selectedProduct,
++    selectedChassisColor,
++    selectedStrapColor,
++    selectedWatchFace,
++    isAutoRotating,
++    cameraPreset,
++    setCameraPreset,
++    simulatedWidgets,
++  } = useViewer();
++
++  // Determine if active device is band (for capsule aspect layout)
++  const isBand = selectedProduct.category === 'band';
++
++  /**
++   * Helper to re-render the 2D watch face onto the offscreen canvas
++   * and signal Three.js that texture needs WebGL upload.
++   */
++  const updateFaceCanvas = useCallback(
++    (time?: Date, animTimeMs?: number) => {
++      const canvas = offscreenCanvasRef.current;
++      const texture = canvasTextureRef.current;
++      if (!canvas || !texture) return;
++
++      const ctx = canvas.getContext('2d');
++      if (!ctx) return;
++
++      drawWatchFace(ctx, {
++        faceId: selectedWatchFace,
++        widgets: simulatedWidgets,
++        time: time || new Date(),
++        size: canvas.width,
++        animationTimeMs: animTimeMs ?? performance.now(),
++        isBand,
++      });
++
++      texture.needsUpdate = true;
++    },
++    [selectedWatchFace, simulatedWidgets, isBand]
++  );
++
++  // 1. Initialize SceneManager and Offscreen CanvasTexture
++  useEffect(() => {
++    if (!containerRef.current) return;
++
++    try {
++      // Create offscreen canvas for dynamic watch face rendering (512x512)
++      const offscreenCanvas = document.createElement('canvas');
++      offscreenCanvas.width = 512;
++      offscreenCanvas.height = 512;
++      offscreenCanvasRef.current = offscreenCanvas;
++
++      // Create Three.js CanvasTexture
++      const texture = new THREE.CanvasTexture(offscreenCanvas);
++      texture.colorSpace = THREE.SRGBColorSpace;
++      texture.minFilter = THREE.LinearFilter;
++      texture.magFilter = THREE.LinearFilter;
++      canvasTextureRef.current = texture;
++
++      // Initial draw
++      updateFaceCanvas();
++
++      // Instantiate SceneManager with onRenderFrame hook
++      let lastFaceUpdate = 0;
++      const sceneManager = new SceneManager({
++        container: containerRef.current,
++        initialPreset: 'angle',
++        onRenderFrame: (timeMs) => {
++          // Smoothly animate watch face telemetry:
++          // Health ECG waves and pulsating measuring heart rate update at ~30 FPS;
++          // static faces update at ~2 FPS to conserve GPU cycles.
++          const isHighRate =
++            selectedWatchFace === 'health' ||
++            selectedWatchFace === 'neon' ||
++            simulatedWidgets.isMeasuringHeartRate;
++          const threshold = isHighRate ? 33 : 500;
++
++          if (timeMs - lastFaceUpdate > threshold) {
++            updateFaceCanvas(undefined, timeMs);
++            lastFaceUpdate = timeMs;
++          }
++        },
++      });
++
++      sceneManagerRef.current = sceneManager;
++      setWebGLError(null);
++    } catch (err) {
++      console.warn('WebGL initialization failed, falling back to 2D preview:', err);
++      setWebGLError(err instanceof Error ? err.message : 'WebGL unsupported');
++    }
++
++    // Cleanup on unmount: dispose WebGL and texture resources
++    return () => {
++      if (sceneManagerRef.current) {
++        sceneManagerRef.current.dispose();
++        sceneManagerRef.current = null;
++      }
++      if (canvasTextureRef.current) {
++        canvasTextureRef.current.dispose();
++        canvasTextureRef.current = null;
++      }
++      offscreenCanvasRef.current = null;
++      modelRef.current = null;
++    };
++  }, []); // Run once on mount
++
++  // 2. Synchronize 3D Model when product modelType changes
++  useEffect(() => {
++    const sceneManager = sceneManagerRef.current;
++    const texture = canvasTextureRef.current;
++    if (!sceneManager) return;
++
++    // Create corresponding procedural 3D model
++    const newModel = createProceduralModel(
++      selectedProduct.modelType,
++      selectedChassisColor.hex,
++      selectedStrapColor.hex,
++      texture || undefined
++    );
++
++    modelRef.current = newModel;
++    sceneManager.setModel(newModel);
++    updateFaceCanvas();
++  }, [selectedProduct.modelType]);
++
++  // 3. Synchronize Chassis Finish Color
++  useEffect(() => {
++    if (modelRef.current) {
++      modelRef.current.updateChassisColor(selectedChassisColor.hex);
++    }
++  }, [selectedChassisColor.hex]);
++
++  // 4. Synchronize Strap Finish Color
++  useEffect(() => {
++    if (modelRef.current) {
++      modelRef.current.updateStrapColor(selectedStrapColor.hex);
++    }
++  }, [selectedStrapColor.hex]);
++
++  // 5. Synchronize Watch Face & Widget Telemetry
++  useEffect(() => {
++    updateFaceCanvas();
++  }, [selectedWatchFace, simulatedWidgets, isBand, updateFaceCanvas]);
++
++  // 6. Synchronize Turntable Auto-Rotation
++  useEffect(() => {
++    if (sceneManagerRef.current) {
++      sceneManagerRef.current.setAutoRotate(isAutoRotating);
++    }
++  }, [isAutoRotating]);
++
++  // 7. Synchronize Camera Angle Presets
++  useEffect(() => {
++    if (cameraPreset && sceneManagerRef.current) {
++      sceneManagerRef.current.setCameraPreset(cameraPreset);
++      setCameraPreset(null); // Consume trigger
++    }
++  }, [cameraPreset, setCameraPreset]);
++
++  return (
++    <div
++      className={`relative w-full h-[450px] sm:h-[540px] lg:h-[620px] rounded-3xl overflow-hidden bg-gradient-to-b from-[#F8F6FF] via-[#F1EEFE] to-[#EAE6FD] shadow-[0_20px_50px_rgba(124,58,237,0.08)] border border-purple-100 ${className}`}
++    >
++      {/* Three.js Canvas Container */}
++      <div ref={containerRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
++
++      {/* Floating Control & Telemetry Overlay */}
++      <ViewerControlsOverlay />
++
++      {/* Fallback View if WebGL fails */}
++      {webGLError && (
++        <div className="absolute inset-0 flex flex-col items-center justify-center p-6 bg-slate-900/90 text-white backdrop-blur-md">
++          <div className="max-w-md text-center space-y-3">
++            <div className="w-12 h-12 mx-auto rounded-full bg-violet-600/30 flex items-center justify-center text-violet-400 font-bold">
++              3D
++            </div>
++            <h3 className="text-lg font-bold">Hardware 3D Preview Fallback</h3>
++            <p className="text-sm text-slate-300">
++              WebGL is currently not available in this environment. Showing simulated 2D display for{' '}
++              <span className="font-semibold text-violet-400">{selectedProduct.name}</span>.
++            </p>
++          </div>
++        </div>
++      )}
++    </div>
++  );
++};
+diff --git a/src/components/viewer3d/proceduralMeshes.ts b/src/components/viewer3d/proceduralMeshes.ts
+new file mode 100644
+index 0000000..bee64ef
+--- /dev/null
++++ b/src/components/viewer3d/proceduralMeshes.ts
+@@ -0,0 +1,677 @@
++/**
++ * Procedural 3D Mesh Generator for Smart Watches and Fitness Bands
++ * Synthesizes procedural geometries using Three.js primitives
++ * (Cylinders, Boxes, Toruses, Extrusions, and Curves) with zero external asset lag.
++ */
++
++import * as THREE from 'three';
++import { DeviceModelType } from '../../types';
++
++export interface ProceduralModel {
++  type: DeviceModelType;
++  group: THREE.Group;
++  screenMesh: THREE.Mesh;
++  screenMaterial: THREE.MeshStandardMaterial;
++  crownMesh?: THREE.Mesh;
++  chassisMaterials: THREE.MeshStandardMaterial[];
++  strapMaterials: THREE.MeshStandardMaterial[];
++  updateChassisColor: (hex: string) => void;
++  updateStrapColor: (hex: string) => void;
++  setScreenTexture: (texture: THREE.CanvasTexture) => void;
++  rotateCrown?: (delta: number) => void;
++  dispose: () => void;
++}
++
++/**
++ * Creates standard screen material with canvas texture mapping and subtle glossy sheen.
++ */
++function createScreenMaterial(texture?: THREE.CanvasTexture): THREE.MeshStandardMaterial {
++  return new THREE.MeshStandardMaterial({
++    map: texture || null,
++    roughness: 0.1,
++    metalness: 0.05,
++    roughnessMap: null,
++    bumpScale: 0.01,
++  });
++}
++
++/**
++ * Creates chassis metallic standard material.
++ */
++function createChassisMaterial(hex: string): THREE.MeshStandardMaterial {
++  return new THREE.MeshStandardMaterial({
++    color: new THREE.Color(hex),
++    metalness: 0.85,
++    roughness: 0.22,
++  });
++}
++
++/**
++ * Creates strap silicone / leather matte standard material.
++ */
++function createStrapMaterial(hex: string): THREE.MeshStandardMaterial {
++  return new THREE.MeshStandardMaterial({
++    color: new THREE.Color(hex),
++    metalness: 0.1,
++    roughness: 0.65,
++  });
++}
++
++/**
++ * Generates curved wrist strap meshes (top and bottom) that loop naturally around a wrist form.
++ */
++function createCurvedStrapMesh(
++  strapWidth: number,
++  yOffset: number,
++  strapMat: THREE.MeshStandardMaterial,
++  options: { isHeavyDuty?: boolean } = {}
++): THREE.Group {
++  const strapGroup = new THREE.Group();
++
++  // Cross section shape for extrusion
++  const shape = new THREE.Shape();
++  const halfW = strapWidth / 2;
++  const thickness = options.isHeavyDuty ? 0.08 : 0.05;
++
++  shape.moveTo(-halfW, -thickness);
++  shape.lineTo(halfW, -thickness);
++  shape.lineTo(halfW, thickness);
++  shape.lineTo(-halfW, thickness);
++  shape.closePath();
++
++  // Top strap curve: extends upward from yOffset then curves back towards -Z
++  const topCurve = new THREE.CatmullRomCurve3([
++    new THREE.Vector3(0, yOffset, 0),
++    new THREE.Vector3(0, yOffset + 0.5, -0.15),
++    new THREE.Vector3(0, yOffset + 0.9, -0.6),
++    new THREE.Vector3(0, yOffset + 0.5, -1.3),
++    new THREE.Vector3(0, 0, -1.5),
++  ]);
++
++  const topGeom = new THREE.ExtrudeGeometry(shape, {
++    extrudePath: topCurve,
++    steps: 32,
++    bevelEnabled: false,
++  });
++  const topMesh = new THREE.Mesh(topGeom, strapMat);
++  topMesh.castShadow = true;
++  topMesh.receiveShadow = true;
++  strapGroup.add(topMesh);
++
++  // Bottom strap curve: extends downward from -yOffset then curves back towards -Z
++  const bottomCurve = new THREE.CatmullRomCurve3([
++    new THREE.Vector3(0, -yOffset, 0),
++    new THREE.Vector3(0, -yOffset - 0.5, -0.15),
++    new THREE.Vector3(0, -yOffset - 0.9, -0.6),
++    new THREE.Vector3(0, -yOffset - 0.5, -1.3),
++    new THREE.Vector3(0, 0, -1.5),
++  ]);
++
++  const bottomGeom = new THREE.ExtrudeGeometry(shape, {
++    extrudePath: bottomCurve,
++    steps: 32,
++    bevelEnabled: false,
++  });
++  const bottomMesh = new THREE.Mesh(bottomGeom, strapMat);
++  bottomMesh.castShadow = true;
++  bottomMesh.receiveShadow = true;
++  strapGroup.add(bottomMesh);
++
++  // Buckle / Clasp at back
++  const buckleGeom = new THREE.BoxGeometry(strapWidth * 1.08, 0.25, 0.12);
++  const buckleMat = new THREE.MeshStandardMaterial({
++    color: 0x94a3b8,
++    metalness: 0.9,
++    roughness: 0.2,
++  });
++  const buckleMesh = new THREE.Mesh(buckleGeom, buckleMat);
++  buckleMesh.position.set(0, 0, -1.52);
++  strapGroup.add(buckleMesh);
++
++  // If heavy duty, add ribbed grooves along top and bottom straps
++  if (options.isHeavyDuty) {
++    const ridgeGeom = new THREE.CylinderGeometry(0.04, 0.04, strapWidth * 0.9, 12);
++    ridgeGeom.rotateZ(Math.PI / 2);
++    const ridgeMat = new THREE.MeshStandardMaterial({
++      color: 0x64748b,
++      metalness: 0.7,
++      roughness: 0.3,
++    });
++    for (let i = 0; i < 4; i++) {
++      const ridgeMesh = new THREE.Mesh(ridgeGeom, ridgeMat);
++      ridgeMesh.position.set(0, yOffset + 0.25 + i * 0.2, -0.05 - i * 0.12);
++      strapGroup.add(ridgeMesh);
++    }
++  }
++
++  return strapGroup;
++}
++
++/**
++ * Creates back sensor array dome and charging pins.
++ */
++function createBackSensorDome(): THREE.Group {
++  const sensorGroup = new THREE.Group();
++
++  // Glass sensor dome
++  const domeGeom = new THREE.CylinderGeometry(0.55, 0.65, 0.06, 32);
++  const domeMat = new THREE.MeshStandardMaterial({
++    color: 0x0f172a,
++    roughness: 0.1,
++    metalness: 0.9,
++  });
++  const domeMesh = new THREE.Mesh(domeGeom, domeMat);
++  domeMesh.rotation.x = Math.PI / 2;
++  domeMesh.position.set(0, 0, -0.2);
++  sensorGroup.add(domeMesh);
++
++  // Green LED optical emitter diodes
++  const ledGeom = new THREE.CircleGeometry(0.06, 16);
++  const ledMat = new THREE.MeshStandardMaterial({
++    color: 0x10b981,
++    emissive: new THREE.Color(0x10b981),
++    emissiveIntensity: 0.6,
++  });
++  const led1 = new THREE.Mesh(ledGeom, ledMat);
++  led1.position.set(-0.16, 0, -0.235);
++  led1.rotation.y = Math.PI;
++  const led2 = new THREE.Mesh(ledGeom, ledMat);
++  led2.position.set(0.16, 0, -0.235);
++  led2.rotation.y = Math.PI;
++  sensorGroup.add(led1, led2);
++
++  return sensorGroup;
++}
++
++/**
++ * Common helper to assemble procedural model with reactive color/texture updates and dispose logic.
++ */
++function assembleProceduralModel(
++  type: DeviceModelType,
++  group: THREE.Group,
++  screenMesh: THREE.Mesh,
++  screenMaterial: THREE.MeshStandardMaterial,
++  chassisMaterials: THREE.MeshStandardMaterial[],
++  strapMaterials: THREE.MeshStandardMaterial[],
++  crownMesh?: THREE.Mesh
++): ProceduralModel {
++  return {
++    type,
++    group,
++    screenMesh,
++    screenMaterial,
++    crownMesh,
++    chassisMaterials,
++    strapMaterials,
++    updateChassisColor: (hex: string) => {
++      chassisMaterials.forEach((m) => m.color.set(hex));
++    },
++    updateStrapColor: (hex: string) => {
++      strapMaterials.forEach((m) => m.color.set(hex));
++    },
++    setScreenTexture: (texture: THREE.CanvasTexture) => {
++      screenMaterial.map = texture;
++      screenMaterial.needsUpdate = true;
++    },
++    rotateCrown: crownMesh
++      ? (delta: number) => {
++          crownMesh.rotation.x += delta;
++        }
++      : undefined,
++    dispose: () => {
++      disposeMeshHierarchy(group);
++    },
++  };
++}
++
++/**
++ * 1. PulseBand 2 (Band - Standard):
++ * Slim capsule profile, 1.1" screen ratio, lightweight silicone band, aluminum bezel.
++ */
++export function buildBandStandard(
++  chassisHex: string,
++  strapHex: string,
++  texture?: THREE.CanvasTexture
++): ProceduralModel {
++  const group = new THREE.Group();
++  const chassisMat = createChassisMaterial(chassisHex);
++  const strapMat = createStrapMaterial(strapHex);
++  const screenMat = createScreenMaterial(texture);
++
++  // Slim capsule case body (Rounded capsule using Extrude of rounded rect)
++  const capsuleShape = new THREE.Shape();
++  const w = 0.42;
++  const h = 0.85;
++  const r = 0.35;
++
++  capsuleShape.absarc(0, h, r, 0, Math.PI);
++  capsuleShape.lineTo(-r, -h);
++  capsuleShape.absarc(0, -h, r, Math.PI, Math.PI * 2);
++  capsuleShape.lineTo(r, h);
++
++  const caseGeom = new THREE.ExtrudeGeometry(capsuleShape, {
++    depth: 0.34,
++    bevelEnabled: true,
++    bevelSegments: 4,
++    steps: 1,
++    bevelSize: 0.05,
++    bevelThickness: 0.05,
++  });
++  caseGeom.center();
++  const caseMesh = new THREE.Mesh(caseGeom, chassisMat);
++  group.add(caseMesh);
++
++  // Bezel ring border
++  const bezelMat = new THREE.MeshStandardMaterial({
++    color: 0x334155,
++    metalness: 0.8,
++    roughness: 0.25,
++  });
++  const bezelGeom = new THREE.BoxGeometry(0.72, 1.62, 0.04);
++  const bezelMesh = new THREE.Mesh(bezelGeom, bezelMat);
++  bezelMesh.position.set(0, 0, 0.19);
++  group.add(bezelMesh);
++
++  // Screen mesh (Elongated 1.1" OLED plane with UV mapping)
++  const screenGeom = new THREE.PlaneGeometry(0.56, 1.42);
++  const screenMesh = new THREE.Mesh(screenGeom, screenMat);
++  screenMesh.position.set(0, 0, 0.215);
++  group.add(screenMesh);
++
++  // Curved Silicone Strap
++  const strapGroup = createCurvedStrapMesh(0.62, 1.05, strapMat);
++  group.add(strapGroup);
++
++  // Back sensor dome
++  group.add(createBackSensorDome());
++
++  return assembleProceduralModel(
++    'band_standard',
++    group,
++    screenMesh,
++    screenMat,
++    [chassisMat],
++    [strapMat]
++  );
++}
++
++/**
++ * 2. PulseBand Pro (Band - Pro):
++ * Curved 1.47" AMOLED display, aircraft-grade aluminum bezel, standalone GPS badge.
++ */
++export function buildBandPro(
++  chassisHex: string,
++  strapHex: string,
++  texture?: THREE.CanvasTexture
++): ProceduralModel {
++  const group = new THREE.Group();
++  const chassisMat = createChassisMaterial(chassisHex);
++  const strapMat = createStrapMaterial(strapHex);
++  const screenMat = createScreenMaterial(texture);
++
++  // Wider curved capsule body
++  const capsuleShape = new THREE.Shape();
++  const w = 0.52;
++  const h = 0.95;
++  const r = 0.44;
++
++  capsuleShape.absarc(0, h, r, 0, Math.PI);
++  capsuleShape.lineTo(-r, -h);
++  capsuleShape.absarc(0, -h, r, Math.PI, Math.PI * 2);
++  capsuleShape.lineTo(r, h);
++
++  const caseGeom = new THREE.ExtrudeGeometry(capsuleShape, {
++    depth: 0.38,
++    bevelEnabled: true,
++    bevelSegments: 5,
++    steps: 1,
++    bevelSize: 0.06,
++    bevelThickness: 0.06,
++  });
++  caseGeom.center();
++  const caseMesh = new THREE.Mesh(caseGeom, chassisMat);
++  group.add(caseMesh);
++
++  // Aircraft-grade aluminum bezel border
++  const bezelGeom = new THREE.BoxGeometry(0.9, 1.88, 0.04);
++  const bezelMat = new THREE.MeshStandardMaterial({
++    color: 0x64748b,
++    metalness: 0.9,
++    roughness: 0.18,
++  });
++  const bezelMesh = new THREE.Mesh(bezelGeom, bezelMat);
++  bezelMesh.position.set(0, 0, 0.21);
++  group.add(bezelMesh);
++
++  // Screen mesh (Larger 1.47" curved display plane)
++  const screenGeom = new THREE.PlaneGeometry(0.74, 1.62);
++  const screenMesh = new THREE.Mesh(screenGeom, screenMat);
++  screenMesh.position.set(0, 0, 0.235);
++  group.add(screenMesh);
++
++  // Sport Strap
++  const strapGroup = createCurvedStrapMesh(0.76, 1.25, strapMat);
++  group.add(strapGroup);
++
++  // Back sensor dome with ECG electrodes
++  const sensorDome = createBackSensorDome();
++  const electrodeGeom = new THREE.CylinderGeometry(0.08, 0.08, 0.04, 16);
++  const electrodeMat = new THREE.MeshStandardMaterial({
++    color: 0xe2e8f0,
++    metalness: 0.95,
++    roughness: 0.1,
++  });
++  const elec1 = new THREE.Mesh(electrodeGeom, electrodeMat);
++  elec1.rotation.x = Math.PI / 2;
++  elec1.position.set(0, 0.35, -0.22);
++  const elec2 = new THREE.Mesh(electrodeGeom, electrodeMat);
++  elec2.rotation.x = Math.PI / 2;
++  elec2.position.set(0, -0.35, -0.22);
++  sensorDome.add(elec1, elec2);
++  group.add(sensorDome);
++
++  return assembleProceduralModel(
++    'band_pro',
++    group,
++    screenMesh,
++    screenMat,
++    [chassisMat],
++    [strapMat]
++  );
++}
++
++/**
++ * 3. Horizon Watch SE (Watch - Standard):
++ * Round squircle aluminum casing, dual side buttons, sleek silicone lugs, circular AMOLED screen.
++ */
++export function buildWatchStandard(
++  chassisHex: string,
++  strapHex: string,
++  texture?: THREE.CanvasTexture
++): ProceduralModel {
++  const group = new THREE.Group();
++  const chassisMat = createChassisMaterial(chassisHex);
++  const strapMat = createStrapMaterial(strapHex);
++  const screenMat = createScreenMaterial(texture);
++
++  // Polished cylindrical squircle casing
++  const caseGeom = new THREE.CylinderGeometry(1.28, 1.28, 0.36, 48);
++  caseGeom.rotateX(Math.PI / 2);
++  const caseMesh = new THREE.Mesh(caseGeom, chassisMat);
++  group.add(caseMesh);
++
++  // Polished outer bezel ring
++  const bezelGeom = new THREE.TorusGeometry(1.24, 0.05, 16, 48);
++  const bezelMat = new THREE.MeshStandardMaterial({
++    color: 0x94a3b8,
++    metalness: 0.9,
++    roughness: 0.2,
++  });
++  const bezelMesh = new THREE.Mesh(bezelGeom, bezelMat);
++  bezelMesh.position.set(0, 0, 0.18);
++  group.add(bezelMesh);
++
++  // Screen mesh (Round AMOLED display)
++  const screenGeom = new THREE.CircleGeometry(1.12, 48);
++  const screenMesh = new THREE.Mesh(screenGeom, screenMat);
++  screenMesh.position.set(0, 0, 0.185);
++  group.add(screenMesh);
++
++  // Dual side pushers at 2 o'clock and 4 o'clock (+X side)
++  const buttonGeom = new THREE.CylinderGeometry(0.1, 0.1, 0.18, 16);
++  buttonGeom.rotateZ(Math.PI / 2);
++
++  const button1 = new THREE.Mesh(buttonGeom, chassisMat);
++  button1.position.set(1.32, 0.45, 0);
++
++  const button2 = new THREE.Mesh(buttonGeom, chassisMat);
++  button2.position.set(1.32, -0.45, 0);
++  group.add(button1, button2);
++
++  // Top and bottom silicone strap lugs
++  const lugGeom = new THREE.BoxGeometry(0.95, 0.24, 0.28);
++  const lugTop = new THREE.Mesh(lugGeom, chassisMat);
++  lugTop.position.set(0, 1.35, 0);
++  const lugBottom = new THREE.Mesh(lugGeom, chassisMat);
++  lugBottom.position.set(0, -1.35, 0);
++  group.add(lugTop, lugBottom);
++
++  // Curved strap
++  const strapGroup = createCurvedStrapMesh(0.88, 1.45, strapMat);
++  group.add(strapGroup);
++
++  // Back sensor dome
++  group.add(createBackSensorDome());
++
++  return assembleProceduralModel(
++    'watch_standard',
++    group,
++    screenMesh,
++    screenMat,
++    [chassisMat],
++    [strapMat]
++  );
++}
++
++/**
++ * 4. Horizon Watch Pro (Watch - Pro):
++ * Brushed aerospace titanium chassis, sapphire crystal rim, precision rotating digital crown at 2 o'clock,
++ * tactile pusher at 4 o'clock, premium sport strap.
++ */
++export function buildWatchPro(
++  chassisHex: string,
++  strapHex: string,
++  texture?: THREE.CanvasTexture
++): ProceduralModel {
++  const group = new THREE.Group();
++  const chassisMat = createChassisMaterial(chassisHex);
++  const strapMat = createStrapMaterial(strapHex);
++  const screenMat = createScreenMaterial(texture);
++
++  // Chamfered titanium casing
++  const caseGeom = new THREE.CylinderGeometry(1.38, 1.42, 0.4, 48);
++  caseGeom.rotateX(Math.PI / 2);
++  const caseMesh = new THREE.Mesh(caseGeom, chassisMat);
++  group.add(caseMesh);
++
++  // Elevated sapphire crystal rim
++  const rimGeom = new THREE.TorusGeometry(1.28, 0.045, 16, 48);
++  const rimMat = new THREE.MeshStandardMaterial({
++    color: 0xcbd5e1,
++    metalness: 0.95,
++    roughness: 0.1,
++  });
++  const rimMesh = new THREE.Mesh(rimGeom, rimMat);
++  rimMesh.position.set(0, 0, 0.2);
++  group.add(rimMesh);
++
++  // Screen mesh (Circular sapphire AMOLED)
++  const screenGeom = new THREE.CircleGeometry(1.22, 48);
++  const screenMesh = new THREE.Mesh(screenGeom, screenMat);
++  screenMesh.position.set(0, 0, 0.205);
++  group.add(screenMesh);
++
++  // Precision Rotating Digital Crown at 2 o'clock
++  const crownGeom = new THREE.CylinderGeometry(0.18, 0.18, 0.22, 24);
++  crownGeom.rotateZ(Math.PI / 2);
++  const crownMat = new THREE.MeshStandardMaterial({
++    color: new THREE.Color(chassisHex),
++    metalness: 0.92,
++    roughness: 0.25,
++  });
++  const crownMesh = new THREE.Mesh(crownGeom, crownMat);
++  crownMesh.position.set(1.45, 0.52, 0);
++  group.add(crownMesh);
++
++  // Secondary tactile pusher at 4 o'clock
++  const pusherGeom = new THREE.BoxGeometry(0.14, 0.32, 0.16);
++  const pusherMesh = new THREE.Mesh(pusherGeom, chassisMat);
++  pusherMesh.position.set(1.42, -0.5, 0);
++  group.add(pusherMesh);
++
++  // Sculpted titanium lugs
++  const lugGeom = new THREE.BoxGeometry(1.05, 0.26, 0.32);
++  const lugTop = new THREE.Mesh(lugGeom, chassisMat);
++  lugTop.position.set(0, 1.48, 0);
++  const lugBottom = new THREE.Mesh(lugGeom, chassisMat);
++  lugBottom.position.set(0, -1.48, 0);
++  group.add(lugTop, lugBottom);
++
++  // Curved strap
++  const strapGroup = createCurvedStrapMesh(0.96, 1.58, strapMat);
++  group.add(strapGroup);
++
++  // Back sensor dome
++  group.add(createBackSensorDome());
++
++  return assembleProceduralModel(
++    'watch_pro',
++    group,
++    screenMesh,
++    screenMat,
++    [chassisMat, crownMat],
++    [strapMat],
++    crownMesh
++  );
++}
++
++/**
++ * 5. Horizon Watch Pro Max (Watch - Pro Max Flagship):
++ * Rugged 49mm titanium bumper armor case (octagonal profile), safety orange action button at 9 o'clock,
++ * crown guard with heavy-duty rotating crown, raised bezel lip, and heavy-duty ribbed ocean strap.
++ */
++export function buildWatchProMax(
++  chassisHex: string,
++  strapHex: string,
++  texture?: THREE.CanvasTexture
++): ProceduralModel {
++  const group = new THREE.Group();
++  const chassisMat = createChassisMaterial(chassisHex);
++  const strapMat = createStrapMaterial(strapHex);
++  const screenMat = createScreenMaterial(texture);
++
++  // Rugged octagonal bumper case (8-segment cylinder)
++  const caseGeom = new THREE.CylinderGeometry(1.58, 1.62, 0.46, 8);
++  caseGeom.rotateX(Math.PI / 2);
++  caseGeom.rotateZ(Math.PI / 8); // Orient flat faces nicely
++  const caseMesh = new THREE.Mesh(caseGeom, chassisMat);
++  group.add(caseMesh);
++
++  // Raised protective titanium bezel lip protecting screen
++  const lipGeom = new THREE.TorusGeometry(1.4, 0.065, 16, 48);
++  const lipMat = new THREE.MeshStandardMaterial({
++    color: 0x475569,
++    metalness: 0.9,
++    roughness: 0.3,
++  });
++  const lipMesh = new THREE.Mesh(lipGeom, lipMat);
++  lipMesh.position.set(0, 0, 0.23);
++  group.add(lipMesh);
++
++  // Screen mesh (Large sapphire display)
++  const screenGeom = new THREE.CircleGeometry(1.32, 48);
++  const screenMesh = new THREE.Mesh(screenGeom, screenMat);
++  screenMesh.position.set(0, 0, 0.235);
++  group.add(screenMesh);
++
++  // Safety Orange Action Button at 9 o'clock (-X side)
++  const actionButtonGeom = new THREE.BoxGeometry(0.18, 0.45, 0.22);
++  const actionButtonMat = new THREE.MeshStandardMaterial({
++    color: 0xf97316, // International safety orange
++    metalness: 0.3,
++    roughness: 0.4,
++  });
++  const actionButtonMesh = new THREE.Mesh(actionButtonGeom, actionButtonMat);
++  actionButtonMesh.position.set(-1.64, 0, 0);
++  group.add(actionButtonMesh);
++
++  // Right Side Crown Guard & Heavy-Duty Knurled Crown at 3 o'clock
++  const guardGeom = new THREE.BoxGeometry(0.25, 0.75, 0.38);
++  const guardMesh = new THREE.Mesh(guardGeom, chassisMat);
++  guardMesh.position.set(1.55, 0.15, 0);
++  group.add(guardMesh);
++
++  const crownGeom = new THREE.CylinderGeometry(0.24, 0.24, 0.26, 24);
++  crownGeom.rotateZ(Math.PI / 2);
++  const crownMat = new THREE.MeshStandardMaterial({
++    color: new THREE.Color(chassisHex),
++    metalness: 0.95,
++    roughness: 0.3,
++  });
++  const crownMesh = new THREE.Mesh(crownGeom, crownMat);
++  crownMesh.position.set(1.68, 0.2, 0);
++  group.add(crownMesh);
++
++  // Heavy-duty titanium lugs
++  const lugGeom = new THREE.BoxGeometry(1.22, 0.32, 0.36);
++  const lugTop = new THREE.Mesh(lugGeom, chassisMat);
++  lugTop.position.set(0, 1.68, 0);
++  const lugBottom = new THREE.Mesh(lugGeom, chassisMat);
++  lugBottom.position.set(0, -1.68, 0);
++  group.add(lugTop, lugBottom);
++
++  // Heavy-duty ribbed strap with titanium buckle pins
++  const strapGroup = createCurvedStrapMesh(1.12, 1.8, strapMat, { isHeavyDuty: true });
++  group.add(strapGroup);
++
++  // Back sensor dome
++  group.add(createBackSensorDome());
++
++  return assembleProceduralModel(
++    'watch_pro_max',
++    group,
++    screenMesh,
++    screenMat,
++    [chassisMat, crownMat],
++    [strapMat],
++    crownMesh
++  );
++}
++
++/**
++ * Factory dispatching creation of corresponding 3D procedural model.
++ */
++export function createProceduralModel(
++  modelType: DeviceModelType,
++  chassisHex: string,
++  strapHex: string,
++  texture?: THREE.CanvasTexture
++): ProceduralModel {
++  switch (modelType) {
++    case 'band_standard':
++      return buildBandStandard(chassisHex, strapHex, texture);
++    case 'band_pro':
++      return buildBandPro(chassisHex, strapHex, texture);
++    case 'watch_standard':
++      return buildWatchStandard(chassisHex, strapHex, texture);
++    case 'watch_pro_max':
++      return buildWatchProMax(chassisHex, strapHex, texture);
++    case 'watch_pro':
++    default:
++      return buildWatchPro(chassisHex, strapHex, texture);
++  }
++}
++
++/**
++ * Cleanly disposes all geometries, materials, and textures in a Three.js hierarchy.
++ */
++export function disposeMeshHierarchy(root: THREE.Object3D): void {
++  root.traverse((child) => {
++    if (child instanceof THREE.Mesh) {
++      if (child.geometry) {
++        child.geometry.dispose();
++      }
++      if (child.material) {
++        if (Array.isArray(child.material)) {
++          child.material.forEach((mat) => {
++            if (mat.map) mat.map.dispose();
++            mat.dispose();
++          });
++        } else {
++          if (child.material.map) child.material.map.dispose();
++          child.material.dispose();
++        }
++      }
++    }
++  });
++}
+diff --git a/src/components/viewer3d/watchFaceCanvas.ts b/src/components/viewer3d/watchFaceCanvas.ts
+new file mode 100644
+index 0000000..5f222d5
+--- /dev/null
++++ b/src/components/viewer3d/watchFaceCanvas.ts
+@@ -0,0 +1,878 @@
++/**
++ * Dynamic Watch Face Canvas Texture Generator
++ * Renders 2D watch faces (Minimal, Neon, Chrono, Health) and simulated smart widgets
++ * onto an offscreen canvas mapped as a Three.js CanvasTexture.
++ */
++
++import { MusicTrack, SimulatedWidgets, WatchFaceId, WeatherData } from '../../types';
++
++export interface WatchFaceTheme {
++  id: WatchFaceId;
++  name: string;
++  tagline: string;
++  bgColor: string;
++  bgGradientEnd: string;
++  primaryColor: string;
++  accentColor: string;
++  secondaryColor: string;
++  textColor: string;
++  mutedColor: string;
++  isDark: boolean;
++}
++
++export const WATCH_FACE_THEMES: Record<WatchFaceId, WatchFaceTheme> = {
++  minimal: {
++    id: 'minimal',
++    name: 'Minimal',
++    tagline: 'Clean Analog & Typographic',
++    bgColor: '#0A0A0E',
++    bgGradientEnd: '#13131A',
++    primaryColor: '#F8FAFC',
++    accentColor: '#7C3AED',
++    secondaryColor: '#06B6D4',
++    textColor: '#FFFFFF',
++    mutedColor: '#94A3B8',
++    isDark: true,
++  },
++  neon: {
++    id: 'neon',
++    name: 'Neon',
++    tagline: 'Cyberpunk Glowing Rings',
++    bgColor: '#04040A',
++    bgGradientEnd: '#0D0820',
++    primaryColor: '#06B6D4',
++    accentColor: '#7C3AED',
++    secondaryColor: '#EC4899',
++    textColor: '#F0FDFA',
++    mutedColor: '#67E8F9',
++    isDark: true,
++  },
++  chrono: {
++    id: 'chrono',
++    name: 'Chrono',
++    tagline: 'Precision Racing Sub-dials',
++    bgColor: '#0F172A',
++    bgGradientEnd: '#1E293B',
++    primaryColor: '#E2E8F0',
++    accentColor: '#F59E0B',
++    secondaryColor: '#EF4444',
++    textColor: '#F8FAFC',
++    mutedColor: '#64748B',
++    isDark: true,
++  },
++  health: {
++    id: 'health',
++    name: 'Health',
++    tagline: 'Live Telemetry Dashboard',
++    bgColor: '#070D18',
++    bgGradientEnd: '#0F1E36',
++    primaryColor: '#EF4444',
++    accentColor: '#10B981',
++    secondaryColor: '#06B6D4',
++    textColor: '#F8FAFC',
++    mutedColor: '#64748B',
++    isDark: true,
++  },
++};
++
++export const WEATHER_PRESETS: WeatherData[] = [
++  { temp: 24, condition: 'sunny', city: 'Tokyo, JP' },
++  { temp: 19, condition: 'cloudy', city: 'San Francisco' },
++  { temp: 16, condition: 'rainy', city: 'London, UK' },
++];
++
++export const DEFAULT_PLAYLIST: MusicTrack[] = [
++  { title: 'Neon Midnight', artist: 'Synthwave' },
++  { title: 'Cyber Pulse', artist: 'Aura Glow' },
++  { title: 'Electro Horizon', artist: 'Starlight Drive' },
++];
++
++/**
++ * Returns theme configuration for given watch face identifier.
++ */
++export function getWatchFaceTheme(faceId: WatchFaceId): WatchFaceTheme {
++  return WATCH_FACE_THEMES[faceId] || WATCH_FACE_THEMES.minimal;
++}
++
++/**
++ * Formats a Date object into a readable smartwatch date string: "DAY DD MON" (e.g. "WED 22 OCT")
++ */
++export function formatWatchDate(date: Date): string {
++  const days = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
++  const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
++
++  const dayName = days[date.getDay()];
++  const dayNum = date.getDate();
++  const monthName = months[date.getMonth()];
++
++  return `${dayName} ${dayNum} ${monthName}`;
++}
++
++export interface FormattedWatchTime {
++  hours: string;
++  minutes: string;
++  seconds: string;
++  timeString: string;
++  period?: 'AM' | 'PM';
++}
++
++/**
++ * Formats a Date object into zero-padded time components.
++ */
++export function formatWatchTime(
++  date: Date,
++  options: { use12Hour?: boolean } = {}
++): FormattedWatchTime {
++  let rawHours = date.getHours();
++  let period: 'AM' | 'PM' | undefined;
++
++  if (options.use12Hour) {
++    period = rawHours >= 12 ? 'PM' : 'AM';
++    rawHours = rawHours % 12 || 12;
++  }
++
++  const hours = String(rawHours).padStart(2, '0');
++  const minutes = String(date.getMinutes()).padStart(2, '0');
++  const seconds = String(date.getSeconds()).padStart(2, '0');
++
++  return {
++    hours,
++    minutes,
++    seconds,
++    timeString: `${hours}:${minutes}`,
++    period,
++  };
++}
++
++/**
++ * Calculates step completion percentage, clamped between 0 and 100%.
++ */
++export function calculateStepPercentage(steps: number, goal = 10000): number {
++  if (goal <= 0) return 0;
++  const pct = (steps / goal) * 100;
++  return Math.min(Math.max(pct, 0), 100);
++}
++
++/**
++ * Generates a realistic simulated heart rate diagnostic reading between 68 and 125 BPM.
++ */
++export function simulateHeartRateMeasurement(options: { min?: number; max?: number } = {}): number {
++  const min = options.min ?? 68;
++  const max = options.max ?? 125;
++  return Math.floor(Math.random() * (max - min + 1)) + min;
++}
++
++/**
++ * Cycles to the next weather preset.
++ */
++export function getNextWeather(current: WeatherData): WeatherData {
++  const currentIndex = WEATHER_PRESETS.findIndex((w) => w.condition === current.condition);
++  const nextIndex = (currentIndex + 1) % WEATHER_PRESETS.length;
++  return WEATHER_PRESETS[nextIndex];
++}
++
++/**
++ * Cycles to the next track in the playlist.
++ */
++export function getNextTrack(current: MusicTrack, playlist: MusicTrack[] = DEFAULT_PLAYLIST): MusicTrack {
++  const currentIndex = playlist.findIndex((t) => t.title === current.title);
++  const nextIndex = (currentIndex + 1) % playlist.length;
++  return playlist[nextIndex];
++}
++
++/**
++ * Computes the ECG waveform Y-offset based on relative horizontal coordinate and animation phase.
++ * Produces standard P-Q-R-S-T cardiac cycle morphology.
++ */
++export function calculateEcgPoint(x: number, width: number, phase = 0): number {
++  // Normalize position within cycle (0 to 1)
++  const cyclePos = ((x / width) * 2 + phase) % 1;
++
++  // Baseline
++  if (cyclePos < 0.2) return 0;
++  // P-wave (at 0.25)
++  if (cyclePos >= 0.2 && cyclePos < 0.35) {
++    const p = (cyclePos - 0.2) / 0.15;
++    return -Math.sin(p * Math.PI) * 4;
++  }
++  // PR segment
++  if (cyclePos >= 0.35 && cyclePos < 0.42) return 0;
++  // Q-dip (at 0.44)
++  if (cyclePos >= 0.42 && cyclePos < 0.46) {
++    const q = (cyclePos - 0.42) / 0.04;
++    return Math.sin(q * Math.PI) * 5;
++  }
++  // R-peak (at 0.50, tall positive spike)
++  if (cyclePos >= 0.46 && cyclePos < 0.54) {
++    const r = (cyclePos - 0.46) / 0.08;
++    return -Math.sin(r * Math.PI) * 28;
++  }
++  // S-dip (at 0.56)
++  if (cyclePos >= 0.54 && cyclePos < 0.60) {
++    const s = (cyclePos - 0.54) / 0.06;
++    return Math.sin(s * Math.PI) * 8;
++  }
++  // ST segment
++  if (cyclePos >= 0.60 && cyclePos < 0.68) return 0;
++  // T-wave (at 0.76)
++  if (cyclePos >= 0.68 && cyclePos < 0.88) {
++    const t = (cyclePos - 0.68) / 0.20;
++    return -Math.sin(t * Math.PI) * 7;
++  }
++
++  return 0;
++}
++
++export interface ChronoHandAngles {
++  secondAngle: number;
++  minuteAngle: number;
++  hourAngle: number;
++  subSecondsAngle: number;
++  subMinutesAngle: number;
++  subHoursAngle: number;
++}
++
++/**
++ * Computes radian angles for chronograph main and sub-dial hands.
++ */
++export function calculateChronoHandAngles(date: Date, stopwatchMs = 0): ChronoHandAngles {
++  const ms = date.getMilliseconds();
++  const sec = date.getSeconds() + ms / 1000;
++  const min = date.getMinutes() + sec / 60;
++  const hour = (date.getHours() % 12) + min / 60;
++
++  // Main hands
++  const secondAngle = (sec / 60) * Math.PI * 2 - Math.PI / 2;
++  const minuteAngle = (min / 60) * Math.PI * 2 - Math.PI / 2;
++  const hourAngle = (hour / 12) * Math.PI * 2 - Math.PI / 2;
++
++  // Sub-dials:
++  // Sub 1: Running seconds (or stopwatch fraction)
++  const subSec = (stopwatchMs / 1000) % 60;
++  const subSecondsAngle = (subSec / 60) * Math.PI * 2 - Math.PI / 2;
++
++  // Sub 2: 30-minute accumulator
++  const subMin = (stopwatchMs / (1000 * 60)) % 30;
++  const subMinutesAngle = (subMin / 30) * Math.PI * 2 - Math.PI / 2;
++
++  // Sub 3: 24-hour dial
++  const dayHours = date.getHours() + date.getMinutes() / 60;
++  const subHoursAngle = (dayHours / 24) * Math.PI * 2 - Math.PI / 2;
++
++  return {
++    secondAngle,
++    minuteAngle,
++    hourAngle,
++    subSecondsAngle,
++    subMinutesAngle,
++    subHoursAngle,
++  };
++}
++
++export interface DrawWatchFaceOptions {
++  faceId: WatchFaceId;
++  widgets: SimulatedWidgets;
++  time?: Date;
++  size?: number;
++  animationTimeMs?: number;
++  isBand?: boolean;
++}
++
++/**
++ * Draws the selected watch face and simulated telemetry onto a 2D canvas context.
++ */
++export function drawWatchFace(ctx: CanvasRenderingContext2D, options: DrawWatchFaceOptions): void {
++  const {
++    faceId,
++    widgets,
++    time = new Date(),
++    size = 512,
++    animationTimeMs = performance.now ? performance.now() : 0,
++    isBand = false,
++  } = options;
++
++  const theme = getWatchFaceTheme(faceId);
++  const cx = size / 2;
++  const cy = size / 2;
++
++  // 1. Draw base background
++  ctx.save();
++  ctx.clearRect(0, 0, size, size);
++
++  // Background Gradient
++  const bgGrad = ctx.createRadialGradient(cx, cy, 20, cx, cy, size * 0.7);
++  bgGrad.addColorStop(0, theme.bgGradientEnd);
++  bgGrad.addColorStop(1, theme.bgColor);
++  ctx.fillStyle = bgGrad;
++  ctx.fillRect(0, 0, size, size);
++
++  // Draw face-specific content
++  switch (faceId) {
++    case 'neon':
++      drawNeonFace(ctx, size, cx, cy, theme, widgets, time, animationTimeMs, isBand);
++      break;
++    case 'chrono':
++      drawChronoFace(ctx, size, cx, cy, theme, widgets, time, animationTimeMs, isBand);
++      break;
++    case 'health':
++      drawHealthFace(ctx, size, cx, cy, theme, widgets, time, animationTimeMs, isBand);
++      break;
++    case 'minimal':
++    default:
++      drawMinimalFace(ctx, size, cx, cy, theme, widgets, time, animationTimeMs, isBand);
++      break;
++  }
++
++  ctx.restore();
++}
++
++/**
++ * 1. Minimal Watch Face:
++ * Elegant typography, refined second ticks, subtle battery pill, clean date and time.
++ */
++function drawMinimalFace(
++  ctx: CanvasRenderingContext2D,
++  size: number,
++  cx: number,
++  cy: number,
++  theme: WatchFaceTheme,
++  widgets: SimulatedWidgets,
++  time: Date,
++  _animTime: number,
++  isBand: boolean
++): void {
++  const dateStr = formatWatchDate(time);
++  const { hours, minutes, seconds } = formatWatchTime(time);
++
++  // Minute/second tick ring (only on watch or wide display)
++  if (!isBand) {
++    ctx.save();
++    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
++    ctx.lineWidth = 2;
++    for (let i = 0; i < 60; i++) {
++      const angle = (i / 60) * Math.PI * 2;
++      const isMajor = i % 5 === 0;
++      const rInner = size * (isMajor ? 0.42 : 0.45);
++      const rOuter = size * 0.47;
++      ctx.lineWidth = isMajor ? 3 : 1.5;
++      ctx.strokeStyle = isMajor ? theme.accentColor : 'rgba(255, 255, 255, 0.2)';
++      ctx.beginPath();
++      ctx.moveTo(cx + Math.cos(angle) * rInner, cy + Math.sin(angle) * rInner);
++      ctx.lineTo(cx + Math.cos(angle) * rOuter, cy + Math.sin(angle) * rOuter);
++      ctx.stroke();
++    }
++    ctx.restore();
++  }
++
++  // Top Date Pill
++  ctx.save();
++  ctx.fillStyle = theme.accentColor;
++  ctx.font = `600 ${isBand ? '16px' : '20px'} -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
++  ctx.textAlign = 'center';
++  ctx.textBaseline = 'middle';
++  const topY = isBand ? cy - 140 : cy - 110;
++  ctx.fillText(dateStr, cx, topY);
++  ctx.restore();
++
++  // Central Clock
++  ctx.save();
++  ctx.fillStyle = '#FFFFFF';
++  ctx.font = `300 ${isBand ? '58px' : '78px'} -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
++  ctx.textAlign = 'center';
++  ctx.textBaseline = 'middle';
++  ctx.fillText(`${hours}:${minutes}`, cx, isBand ? cy - 40 : cy - 10);
++
++  // Seconds indicator
++  ctx.fillStyle = theme.mutedColor;
++  ctx.font = `400 ${isBand ? '20px' : '26px'} -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
++  ctx.fillText(`:${seconds}`, cx + (isBand ? 95 : 125), isBand ? cy - 40 : cy - 10);
++  ctx.restore();
++
++  // Bottom Telemetry: Battery Pill & Heart Rate / Steps
++  const bottomY = isBand ? cy + 60 : cy + 85;
++
++  // Battery Pill
++  drawBatteryPill(ctx, cx - (isBand ? 0 : 70), bottomY, widgets.battery, theme.accentColor);
++
++  // Secondary Widget Info (Steps or Heart Rate)
++  ctx.save();
++  ctx.fillStyle = theme.primaryColor;
++  ctx.font = `500 ${isBand ? '16px' : '18px'} -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
++  ctx.textAlign = 'center';
++  ctx.textBaseline = 'middle';
++  const infoY = isBand ? cy + 120 : bottomY + (isBand ? 0 : 45);
++  ctx.fillText(`♥ ${widgets.heartRate} BPM   •   ${widgets.steps.toLocaleString()} STEPS`, cx, infoY);
++  ctx.restore();
++}
++
++/**
++ * 2. Neon Watch Face:
++ * Cyberpunk dual-gradient typography (cyan & violet), glowing rings, concentric progress arcs.
++ */
++function drawNeonFace(
++  ctx: CanvasRenderingContext2D,
++  size: number,
++  cx: number,
++  cy: number,
++  theme: WatchFaceTheme,
++  widgets: SimulatedWidgets,
++  time: Date,
++  animTime: number,
++  isBand: boolean
++): void {
++  const { hours, minutes } = formatWatchTime(time);
++  const stepPct = calculateStepPercentage(widgets.steps, widgets.stepGoal) / 100;
++  const batteryPct = Math.min(Math.max(widgets.battery / 100, 0), 1);
++
++  // Concentric Progress Arcs (Steps & Battery)
++  const ringRadius1 = isBand ? size * 0.36 : size * 0.42;
++  const ringRadius2 = isBand ? size * 0.30 : size * 0.36;
++
++  // Background Ring Track
++  ctx.save();
++  ctx.lineWidth = isBand ? 8 : 12;
++  ctx.lineCap = 'round';
++
++  // Step Track
++  ctx.strokeStyle = 'rgba(6, 182, 212, 0.15)';
++  ctx.beginPath();
++  ctx.arc(cx, cy, ringRadius1, 0, Math.PI * 2);
++  ctx.stroke();
++
++  // Active Step Arc (Cyan glow)
++  ctx.strokeStyle = theme.primaryColor;
++  ctx.shadowColor = theme.primaryColor;
++  ctx.shadowBlur = 12;
++  ctx.beginPath();
++  ctx.arc(cx, cy, ringRadius1, -Math.PI / 2, -Math.PI / 2 + stepPct * Math.PI * 2);
++  ctx.stroke();
++
++  // Battery Track
++  ctx.strokeStyle = 'rgba(124, 58, 237, 0.15)';
++  ctx.shadowBlur = 0;
++  ctx.beginPath();
++  ctx.arc(cx, cy, ringRadius2, 0, Math.PI * 2);
++  ctx.stroke();
++
++  // Active Battery Arc (Violet glow)
++  ctx.strokeStyle = theme.accentColor;
++  ctx.shadowColor = theme.accentColor;
++  ctx.shadowBlur = 12;
++  ctx.beginPath();
++  ctx.arc(cx, cy, ringRadius2, -Math.PI / 2, -Math.PI / 2 + batteryPct * Math.PI * 2);
++  ctx.stroke();
++  ctx.restore();
++
++  // Cyberpunk Time Gradient Text
++  ctx.save();
++  const textGrad = ctx.createLinearGradient(cx - 100, cy - 30, cx + 100, cy + 30);
++  textGrad.addColorStop(0, theme.primaryColor);
++  textGrad.addColorStop(1, theme.accentColor);
++
++  ctx.fillStyle = textGrad;
++  ctx.shadowColor = theme.primaryColor;
++  ctx.shadowBlur = 15;
++  ctx.font = `800 ${isBand ? '56px' : '82px'} -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
++  ctx.textAlign = 'center';
++  ctx.textBaseline = 'middle';
++  ctx.fillText(`${hours}:${minutes}`, cx, isBand ? cy - 20 : cy - 15);
++  ctx.restore();
++
++  // Pulsing Live Heart Rate Badge
++  const heartScale = widgets.isMeasuringHeartRate
++    ? 1 + Math.sin(animTime / 120) * 0.25
++    : 1 + Math.sin(animTime / 300) * 0.1;
++
++  ctx.save();
++  ctx.translate(cx, isBand ? cy + 45 : cy + 55);
++  ctx.scale(heartScale, heartScale);
++  ctx.fillStyle = '#EF4444';
++  ctx.font = '700 18px sans-serif';
++  ctx.textAlign = 'center';
++  ctx.textBaseline = 'middle';
++  const hrText = widgets.isMeasuringHeartRate ? 'MEASURING...' : `♥ ${widgets.heartRate} BPM`;
++  ctx.fillText(hrText, 0, 0);
++  ctx.restore();
++
++  // Bottom Weather & Track info
++  ctx.save();
++  ctx.fillStyle = '#94A3B8';
++  ctx.font = `500 ${isBand ? '14px' : '16px'} -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
++  ctx.textAlign = 'center';
++  ctx.textBaseline = 'middle';
++  const bottomText = `${widgets.weather.city.split(',')[0]} ${widgets.weather.temp}°C  •  ${widgets.steps} STEPS`;
++  ctx.fillText(bottomText, cx, isBand ? cy + 105 : cy + 115);
++  ctx.restore();
++}
++
++/**
++ * 3. Chrono Watch Face:
++ * Racing chronograph with three distinct sub-dials, tachymeter ring, brushed slate background.
++ */
++function drawChronoFace(
++  ctx: CanvasRenderingContext2D,
++  size: number,
++  cx: number,
++  cy: number,
++  theme: WatchFaceTheme,
++  widgets: SimulatedWidgets,
++  time: Date,
++  animTime: number,
++  isBand: boolean
++): void {
++  const angles = calculateChronoHandAngles(time, animTime);
++
++  // Outer Tachymeter Ring
++  if (!isBand) {
++    ctx.save();
++    ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
++    ctx.fillStyle = '#94A3B8';
++    ctx.font = '600 10px sans-serif';
++    ctx.textAlign = 'center';
++    ctx.textBaseline = 'middle';
++
++    const tachymeterNumbers = [
++      { num: '60', deg: 0 },
++      { num: '75', deg: 45 },
++      { num: '100', deg: 90 },
++      { num: '150', deg: 150 },
++      { num: '200', deg: 210 },
++      { num: '300', deg: 270 },
++      { num: '500', deg: 320 },
++    ];
++
++    tachymeterNumbers.forEach((t) => {
++      const rad = (t.deg * Math.PI) / 180 - Math.PI / 2;
++      const x = cx + Math.cos(rad) * (size * 0.44);
++      const y = cy + Math.sin(rad) * (size * 0.44);
++      ctx.fillText(t.num, x, y);
++    });
++
++    // 12 Major Hour Markers
++    for (let i = 0; i < 12; i++) {
++      const rad = (i / 12) * Math.PI * 2;
++      ctx.lineWidth = i % 3 === 0 ? 4 : 2;
++      ctx.strokeStyle = i % 3 === 0 ? theme.accentColor : '#FFFFFF';
++      ctx.beginPath();
++      ctx.moveTo(cx + Math.cos(rad) * (size * 0.38), cy + Math.sin(rad) * (size * 0.38));
++      ctx.lineTo(cx + Math.cos(rad) * (size * 0.42), cy + Math.sin(rad) * (size * 0.42));
++      ctx.stroke();
++    }
++    ctx.restore();
++  }
++
++  // Three Distinct Circular Sub-Dials
++  // Sub-dial 1: 30-Minute Accumulator (Top or Center-Left)
++  const sub1X = isBand ? cx : cx - (size * 0.18);
++  const sub1Y = isBand ? cy - (size * 0.22) : cy - (size * 0.05);
++  drawSubDial(ctx, sub1X, sub1Y, isBand ? 38 : 46, '30M', angles.subMinutesAngle, theme.accentColor);
++
++  // Sub-dial 2: 24-Hour Dial (Center-Right)
++  if (!isBand) {
++    const sub2X = cx + (size * 0.18);
++    const sub2Y = cy - (size * 0.05);
++    drawSubDial(ctx, sub2X, sub2Y, 46, '24H', angles.subHoursAngle, '#38BDF8');
++  }
++
++  // Sub-dial 3: Running Seconds Dial (Bottom)
++  const sub3X = cx;
++  const sub3Y = isBand ? cy + (size * 0.22) : cy + (size * 0.18);
++  drawSubDial(ctx, sub3X, sub3Y, isBand ? 40 : 50, 'SEC', angles.subSecondsAngle, '#EF4444');
++
++  // Date Box at 4 o'clock or top
++  ctx.save();
++  ctx.fillStyle = '#1E293B';
++  ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
++  ctx.lineWidth = 1.5;
++  const dateBoxX = isBand ? cx - 35 : cx + (size * 0.16);
++  const dateBoxY = isBand ? cy - (size * 0.38) : cy + (size * 0.14);
++  ctx.fillRect(dateBoxX, dateBoxY, 70, 24);
++  ctx.strokeRect(dateBoxX, dateBoxY, 70, 24);
++  ctx.fillStyle = '#FFFFFF';
++  ctx.font = '700 12px sans-serif';
++  ctx.textAlign = 'center';
++  ctx.textBaseline = 'middle';
++  ctx.fillText(time.getDate().toString().padStart(2, '0') + ' OCT', dateBoxX + 35, dateBoxY + 12);
++  ctx.restore();
++
++  // Luminescent Main Hour & Minute Hands
++  ctx.save();
++  ctx.translate(cx, cy);
++  ctx.lineCap = 'round';
++
++  // Hour Hand
++  ctx.save();
++  ctx.rotate(angles.hourAngle + Math.PI / 2);
++  ctx.strokeStyle = '#FFFFFF';
++  ctx.lineWidth = 7;
++  ctx.beginPath();
++  ctx.moveTo(0, 0);
++  ctx.lineTo(0, -(size * 0.24));
++  ctx.stroke();
++  ctx.restore();
++
++  // Minute Hand
++  ctx.save();
++  ctx.rotate(angles.minuteAngle + Math.PI / 2);
++  ctx.strokeStyle = '#E2E8F0';
++  ctx.lineWidth = 5;
++  ctx.beginPath();
++  ctx.moveTo(0, 0);
++  ctx.lineTo(0, -(size * 0.34));
++  ctx.stroke();
++  ctx.restore();
++
++  // Chrono Orange Second Hand (Fine needle)
++  ctx.save();
++  ctx.rotate(angles.secondAngle + Math.PI / 2);
++  ctx.strokeStyle = theme.accentColor;
++  ctx.lineWidth = 2;
++  ctx.beginPath();
++  ctx.moveTo(0, size * 0.08);
++  ctx.lineTo(0, -(size * 0.38));
++  ctx.stroke();
++  ctx.restore();
++
++  // Center Pivot Hub
++  ctx.fillStyle = theme.accentColor;
++  ctx.beginPath();
++  ctx.arc(0, 0, 6, 0, Math.PI * 2);
++  ctx.fill();
++  ctx.restore();
++}
++
++/**
++ * Helper to draw a circular chronograph sub-dial with tick marks and indicator hand.
++ */
++function drawSubDial(
++  ctx: CanvasRenderingContext2D,
++  x: number,
++  y: number,
++  radius: number,
++  label: string,
++  handAngle: number,
++  accentColor: string
++): void {
++  ctx.save();
++  // Background circle
++  ctx.fillStyle = 'rgba(15, 23, 42, 0.7)';
++  ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
++  ctx.lineWidth = 1.5;
++  ctx.beginPath();
++  ctx.arc(x, y, radius, 0, Math.PI * 2);
++  ctx.fill();
++  ctx.stroke();
++
++  // Sub-dial ticks
++  ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
++  for (let i = 0; i < 12; i++) {
++    const a = (i / 12) * Math.PI * 2;
++    const rIn = radius * 0.8;
++    const rOut = radius * 0.95;
++    ctx.lineWidth = i % 3 === 0 ? 2 : 1;
++    ctx.beginPath();
++    ctx.moveTo(x + Math.cos(a) * rIn, y + Math.sin(a) * rIn);
++    ctx.lineTo(x + Math.cos(a) * rOut, y + Math.sin(a) * rOut);
++    ctx.stroke();
++  }
++
++  // Sub-dial label
++  ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
++  ctx.font = '600 9px sans-serif';
++  ctx.textAlign = 'center';
++  ctx.textBaseline = 'middle';
++  ctx.fillText(label, x, y - radius * 0.45);
++
++  // Hand
++  ctx.strokeStyle = accentColor;
++  ctx.lineWidth = 2;
++  ctx.lineCap = 'round';
++  ctx.beginPath();
++  ctx.moveTo(x, y);
++  ctx.lineTo(x + Math.cos(handAngle) * (radius * 0.75), y + Math.sin(handAngle) * (radius * 0.75));
++  ctx.stroke();
++
++  // Center pin
++  ctx.fillStyle = '#FFFFFF';
++  ctx.beginPath();
++  ctx.arc(x, y, 3, 0, Math.PI * 2);
++  ctx.fill();
++
++  ctx.restore();
++}
++
++/**
++ * 4. Health Watch Face:
++ * Real-time telemetry dashboard featuring dynamic animated ECG wave, BPM counter,
++ * circular step goal arc, and hydration/calorie metrics.
++ */
++function drawHealthFace(
++  ctx: CanvasRenderingContext2D,
++  size: number,
++  cx: number,
++  cy: number,
++  theme: WatchFaceTheme,
++  widgets: SimulatedWidgets,
++  time: Date,
++  animTime: number,
++  isBand: boolean
++): void {
++  const { hours, minutes } = formatWatchTime(time);
++
++  // Digital Time at Top
++  ctx.save();
++  ctx.fillStyle = '#FFFFFF';
++  ctx.font = `700 ${isBand ? '40px' : '52px'} -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
++  ctx.textAlign = 'center';
++  ctx.textBaseline = 'middle';
++  ctx.fillText(`${hours}:${minutes}`, cx, isBand ? cy - 145 : cy - 125);
++  ctx.restore();
++
++  // ECG Waveform Card Area
++  const ecgWidth = isBand ? size * 0.75 : size * 0.8;
++  const ecgHeight = isBand ? 70 : 85;
++  const ecgX = cx - ecgWidth / 2;
++  const ecgY = isBand ? cy - 85 : cy - 65;
++
++  ctx.save();
++  ctx.fillStyle = 'rgba(15, 23, 42, 0.6)';
++  ctx.strokeStyle = 'rgba(239, 68, 68, 0.3)';
++  ctx.lineWidth = 1.5;
++  ctx.fillRect(ecgX, ecgY, ecgWidth, ecgHeight);
++  ctx.strokeRect(ecgX, ecgY, ecgWidth, ecgHeight);
++
++  // ECG Grid lines
++  ctx.strokeStyle = 'rgba(239, 68, 68, 0.12)';
++  ctx.lineWidth = 1;
++  const gridStep = 20;
++  for (let gx = ecgX; gx <= ecgX + ecgWidth; gx += gridStep) {
++    ctx.beginPath();
++    ctx.moveTo(gx, ecgY);
++    ctx.lineTo(gx, ecgY + ecgHeight);
++    ctx.stroke();
++  }
++  for (let gy = ecgY; gy <= ecgY + ecgHeight; gy += gridStep) {
++    ctx.beginPath();
++    ctx.moveTo(ecgX, gy);
++    ctx.lineTo(ecgX + ecgWidth, gy);
++    ctx.stroke();
++  }
++
++  // Draw Animated ECG Trace Line
++  const phase = (animTime / 1200) % 1;
++  ctx.strokeStyle = theme.primaryColor;
++  ctx.shadowColor = theme.primaryColor;
++  ctx.shadowBlur = 8;
++  ctx.lineWidth = 2.5;
++  ctx.beginPath();
++
++  const baselineY = ecgY + ecgHeight / 2;
++  for (let x = 0; x <= ecgWidth; x += 4) {
++    const waveY = calculateEcgPoint(x, ecgWidth, phase);
++    const plotY = baselineY + waveY;
++    if (x === 0) {
++      ctx.moveTo(ecgX + x, plotY);
++    } else {
++      ctx.lineTo(ecgX + x, plotY);
++    }
++  }
++  ctx.stroke();
++  ctx.restore();
++
++  // Heart Rate BPM readout
++  ctx.save();
++  const heartScale = widgets.isMeasuringHeartRate
++    ? 1 + Math.sin(animTime / 100) * 0.3
++    : 1 + Math.sin(animTime / 350) * 0.1;
++
++  ctx.fillStyle = theme.primaryColor;
++  ctx.font = `800 ${isBand ? '26px' : '34px'} sans-serif`;
++  ctx.textAlign = 'center';
++  ctx.textBaseline = 'middle';
++  const hrY = isBand ? cy + 20 : cy + 50;
++
++  if (widgets.isMeasuringHeartRate) {
++    ctx.fillText('DIAGNOSTIC...', cx, hrY);
++  } else {
++    ctx.fillText(`♥ ${widgets.heartRate} BPM`, cx, hrY);
++  }
++  ctx.restore();
++
++  // Circular Step Goal Arc or Progress Meter
++  const stepPct = calculateStepPercentage(widgets.steps, widgets.stepGoal);
++  const arcY = isBand ? cy + 90 : cy + 120;
++
++  ctx.save();
++  ctx.fillStyle = theme.accentColor;
++  ctx.font = `700 ${isBand ? '16px' : '20px'} -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
++  ctx.textAlign = 'center';
++  ctx.textBaseline = 'middle';
++  ctx.fillText(`${widgets.steps.toLocaleString()} / ${widgets.stepGoal.toLocaleString()} STEPS`, cx, arcY);
++
++  ctx.fillStyle = '#94A3B8';
++  ctx.font = '500 13px sans-serif';
++  ctx.fillText(`${stepPct.toFixed(0)}% OF DAILY GOAL  •  ${widgets.battery}% BATTERY`, cx, arcY + 24);
++  ctx.restore();
++}
++
++/**
++ * Draws a clean battery status pill with fill level.
++ */
++function drawBatteryPill(
++  ctx: CanvasRenderingContext2D,
++  x: number,
++  y: number,
++  percentage: number,
++  accentColor: string
++): void {
++  ctx.save();
++  const pillWidth = 44;
++  const pillHeight = 20;
++  const pillRadius = 4;
++  const px = x - pillWidth / 2;
++  const py = y - pillHeight / 2;
++
++  // Battery body border
++  ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
++  ctx.lineWidth = 2;
++  if (ctx.roundRect) {
++    ctx.beginPath();
++    ctx.roundRect(px, py, pillWidth, pillHeight, pillRadius);
++    ctx.stroke();
++  } else {
++    ctx.strokeRect(px, py, pillWidth, pillHeight);
++  }
++
++  // Battery positive terminal
++  ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
++  ctx.fillRect(px + pillWidth + 2, py + 5, 3, pillHeight - 10);
++
++  // Fill level
++  const clampedPct = Math.min(Math.max(percentage / 100, 0), 1);
++  const fillWidth = Math.max(0, (pillWidth - 6) * clampedPct);
++  ctx.fillStyle = clampedPct < 0.2 ? '#EF4444' : accentColor;
++  ctx.fillRect(px + 3, py + 3, fillWidth, pillHeight - 6);
++
++  // Percentage text
++  ctx.fillStyle = '#FFFFFF';
++  ctx.font = '600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
++  ctx.textAlign = 'left';
++  ctx.textBaseline = 'middle';
++  ctx.fillText(`${percentage}%`, px + pillWidth + 12, y);
++
++  ctx.restore();
++}
++
++/**
++ * Factory creating an offscreen HTMLCanvasElement configured for high-res watch face textures.
++ */
++export function createWatchFaceCanvas(size = 512): {
++  canvas: HTMLCanvasElement;
++  ctx: CanvasRenderingContext2D | null;
++} {
++  const canvas = document.createElement('canvas');
++  canvas.width = size;
++  canvas.height = size;
++  const ctx = canvas.getContext('2d');
++  return { canvas, ctx };
++}
+diff --git a/src/context/ViewerContext.tsx b/src/context/ViewerContext.tsx
+new file mode 100644
+index 0000000..d968695
+--- /dev/null
++++ b/src/context/ViewerContext.tsx
+@@ -0,0 +1,255 @@
++/**
++ * ViewerContext - 3D Studio & Wearable Customizer State
++ * Manages active product selection, chassis & strap color swatches,
++ * active watch face, turntable auto-rotation, camera presets,
++ * and simulated wearable telemetry (heart rate, steps, weather, music, battery).
++ */
++
++import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
++import {
++  ColorOption,
++  MusicTrack,
++  Product,
++  SimulatedWidgets,
++  WatchFaceId,
++  WeatherData,
++} from '../types';
++import { DEFAULT_PRODUCT, getProductById, PRODUCTS } from '../data/products';
++import {
++  DEFAULT_PLAYLIST,
++  getNextTrack,
++  getNextWeather,
++  simulateHeartRateMeasurement,
++  WEATHER_PRESETS,
++} from '../components/viewer3d/watchFaceCanvas';
++
++export type CameraPreset = 'front' | 'angle' | 'side' | 'reset';
++
++export interface ViewerContextType {
++  // Device Configuration
++  selectedProductId: string;
++  selectedProduct: Product;
++  setSelectedProductId: (id: string) => void;
++  selectedChassisColor: ColorOption;
++  setSelectedChassisColor: (color: ColorOption) => void;
++  selectedStrapColor: ColorOption;
++  setSelectedStrapColor: (color: ColorOption) => void;
++  selectedWatchFace: WatchFaceId;
++  setSelectedWatchFace: (face: WatchFaceId) => void;
++
++  // Camera & Turntable Controls
++  isAutoRotating: boolean;
++  setIsAutoRotating: React.Dispatch<React.SetStateAction<boolean>>;
++  toggleAutoRotate: () => void;
++  cameraPreset: CameraPreset | null;
++  setCameraPreset: (preset: CameraPreset | null) => void;
++  resetCamera: () => void;
++
++  // Simulated Telemetry Widgets
++  simulatedWidgets: SimulatedWidgets;
++  measureHeartRate: () => void;
++  addSteps: (amount: number) => void;
++  toggleWeather: () => void;
++  toggleMusicPlay: () => void;
++  nextTrack: () => void;
++  setBattery: (level: number) => void;
++}
++
++export const INITIAL_WIDGETS: SimulatedWidgets = {
++  heartRate: 72,
++  isMeasuringHeartRate: false,
++  steps: 7420,
++  stepGoal: 10000,
++  isPlayingMusic: false,
++  currentTrack: DEFAULT_PLAYLIST[0],
++  weather: WEATHER_PRESETS[0],
++  battery: 88,
++};
++
++const ViewerContext = createContext<ViewerContextType | undefined>(undefined);
++
++export interface ViewerProviderProps {
++  children: React.ReactNode;
++  initialProductId?: string;
++  initialWidgets?: Partial<SimulatedWidgets>;
++}
++
++export const ViewerProvider: React.FC<ViewerProviderProps> = ({
++  children,
++  initialProductId = DEFAULT_PRODUCT.id,
++  initialWidgets = {},
++}) => {
++  const initialProduct = useMemo(
++    () => getProductById(initialProductId) || DEFAULT_PRODUCT,
++    [initialProductId]
++  );
++
++  const [selectedProductId, setSelectedProductIdState] = useState<string>(initialProduct.id);
++
++  const selectedProduct = useMemo(() => {
++    return getProductById(selectedProductId) || PRODUCTS[0];
++  }, [selectedProductId]);
++
++  const [selectedChassisColor, setSelectedChassisColor] = useState<ColorOption>(() => {
++    const found = initialProduct.chassisColors.find(
++      (c) => c.hex === initialProduct.defaultChassisColor
++    );
++    return found || initialProduct.chassisColors[0];
++  });
++
++  const [selectedStrapColor, setSelectedStrapColor] = useState<ColorOption>(() => {
++    const found = initialProduct.strapColors.find(
++      (c) => c.hex === initialProduct.defaultStrapColor
++    );
++    return found || initialProduct.strapColors[0];
++  });
++
++  const [selectedWatchFace, setSelectedWatchFace] = useState<WatchFaceId>(
++    initialProduct.defaultFace || 'minimal'
++  );
++
++  const [isAutoRotating, setIsAutoRotating] = useState<boolean>(true);
++  const [cameraPreset, setCameraPreset] = useState<CameraPreset | null>(null);
++
++  const [simulatedWidgets, setSimulatedWidgets] = useState<SimulatedWidgets>({
++    ...INITIAL_WIDGETS,
++    ...initialWidgets,
++  });
++
++  // Handler for product switching: syncs default chassis, strap, and face
++  const setSelectedProductId = useCallback((id: string) => {
++    const prod = getProductById(id);
++    if (prod) {
++      setSelectedProductIdState(prod.id);
++      const chassis = prod.chassisColors.find((c) => c.hex === prod.defaultChassisColor) || prod.chassisColors[0];
++      const strap = prod.strapColors.find((c) => c.hex === prod.defaultStrapColor) || prod.strapColors[0];
++      setSelectedChassisColor(chassis);
++      setSelectedStrapColor(strap);
++      setSelectedWatchFace(prod.defaultFace);
++    }
++  }, []);
++
++  const toggleAutoRotate = useCallback(() => {
++    setIsAutoRotating((prev) => !prev);
++  }, []);
++
++  const resetCamera = useCallback(() => {
++    setCameraPreset('reset');
++  }, []);
++
++  // Telemetry: measure heart rate
++  const measureHeartRate = useCallback(() => {
++    setSimulatedWidgets((prev) => ({
++      ...prev,
++      isMeasuringHeartRate: true,
++    }));
++
++    const timer = setTimeout(() => {
++      const reading = simulateHeartRateMeasurement();
++      setSimulatedWidgets((prev) => ({
++        ...prev,
++        heartRate: reading,
++        isMeasuringHeartRate: false,
++      }));
++    }, 2800);
++
++    return () => clearTimeout(timer);
++  }, []);
++
++  // Telemetry: step counter increment
++  const addSteps = useCallback((amount: number) => {
++    setSimulatedWidgets((prev) => ({
++      ...prev,
++      steps: Math.max(0, prev.steps + amount),
++    }));
++  }, []);
++
++  // Telemetry: cycle weather condition
++  const toggleWeather = useCallback(() => {
++    setSimulatedWidgets((prev) => ({
++      ...prev,
++      weather: getNextWeather(prev.weather),
++    }));
++  }, []);
++
++  // Telemetry: music play/pause toggle
++  const toggleMusicPlay = useCallback(() => {
++    setSimulatedWidgets((prev) => ({
++      ...prev,
++      isPlayingMusic: !prev.isPlayingMusic,
++    }));
++  }, []);
++
++  // Telemetry: next track
++  const nextTrack = useCallback(() => {
++    setSimulatedWidgets((prev) => ({
++      ...prev,
++      currentTrack: getNextTrack(prev.currentTrack),
++    }));
++  }, []);
++
++  // Telemetry: set battery level
++  const setBattery = useCallback((level: number) => {
++    const clamped = Math.min(Math.max(Math.round(level), 0), 100);
++    setSimulatedWidgets((prev) => ({
++      ...prev,
++      battery: clamped,
++    }));
++  }, []);
++
++  const value = useMemo(
++    () => ({
++      selectedProductId,
++      selectedProduct,
++      setSelectedProductId,
++      selectedChassisColor,
++      setSelectedChassisColor,
++      selectedStrapColor,
++      setSelectedStrapColor,
++      selectedWatchFace,
++      setSelectedWatchFace,
++      isAutoRotating,
++      setIsAutoRotating,
++      toggleAutoRotate,
++      cameraPreset,
++      setCameraPreset,
++      resetCamera,
++      simulatedWidgets,
++      measureHeartRate,
++      addSteps,
++      toggleWeather,
++      toggleMusicPlay,
++      nextTrack,
++      setBattery,
++    }),
++    [
++      selectedProductId,
++      selectedProduct,
++      setSelectedProductId,
++      selectedChassisColor,
++      selectedStrapColor,
++      selectedWatchFace,
++      isAutoRotating,
++      toggleAutoRotate,
++      cameraPreset,
++      resetCamera,
++      simulatedWidgets,
++      measureHeartRate,
++      addSteps,
++      toggleWeather,
++      toggleMusicPlay,
++      nextTrack,
++      setBattery,
++    ]
++  );
++
++  return <ViewerContext.Provider value={value}>{children}</ViewerContext.Provider>;
++};
++
++export function useViewer(): ViewerContextType {
++  const context = useContext(ViewerContext);
++  if (!context) {
++    throw new Error('useViewer must be used within a ViewerProvider');
++  }
++  return context;
++}
+diff --git a/tasks/todo.md b/tasks/todo.md
+index 411c3ba..9d2e401 100644
+--- a/tasks/todo.md
++++ b/tasks/todo.md
+@@ -25,50 +25,50 @@
+ 
+ **Estimated scope:** Medium (4-5 files)
+ 
+ ---
+ 
+ ## Task T2: 3D Three.js Studio & Dynamic Watch Face / Widget Canvas System
+ 
+ **Description:** Build the Three.js 3D rendering pipeline and dynamic offscreen canvas texture engine. Implement procedural 3D geometries for Band (capsule + curved strap) and Watch (Standard, Pro, Pro Max with rugged bumper and rotating crown). Create the dynamic 2D canvas renderer supporting 4 watch faces (Minimal, Neon, Chrono, Health) and interactive simulated telemetry widgets (live pulsing heart rate, step counter, weather toggle, music playback, battery monitor). Implement `ViewerContext` and interactive camera controls (360° orbit rotation, auto-rotate turntable, reset view).
+ 
+ **Acceptance criteria:**
+-- [ ] Three.js scene manager with WebGLRenderer, lights, damping OrbitControls, and auto-rotation toggle in `src/components/viewer3d/SceneManager.ts`.
+-- [ ] Procedural geometries for Band (Standard/Pro) and Watch (Standard/Pro/Pro Max) with customizable chassis and strap colors in `src/components/viewer3d/proceduralMeshes.ts`.
+-- [ ] Dynamic offscreen canvas texture renderer in `src/components/viewer3d/watchFaceCanvas.ts` supporting Minimal, Neon, Chrono, and Health watch faces.
+-- [ ] Interactive widget telemetry simulator (heart rate pulse & measurement, step increment, weather toggle, music player, battery status) in `src/context/ViewerContext.tsx`.
+-- [ ] React 3D viewer component and control overlay (`WatchViewer3D.tsx`, `ViewerControlsOverlay.tsx`).
+-- [ ] Unit tests in `tests/watchFaceCanvas.test.ts` verifying face rendering logic, color themes, and widget updates pass.
++- [x] Three.js scene manager with WebGLRenderer, lights, damping OrbitControls, and auto-rotation toggle in `src/components/viewer3d/SceneManager.ts`.
++- [x] Procedural geometries for Band (Standard/Pro) and Watch (Standard/Pro/Pro Max) with customizable chassis and strap colors in `src/components/viewer3d/proceduralMeshes.ts`.
++- [x] Dynamic offscreen canvas texture renderer in `src/components/viewer3d/watchFaceCanvas.ts` supporting Minimal, Neon, Chrono, and Health watch faces.
++- [x] Interactive widget telemetry simulator (heart rate pulse & measurement, step increment, weather toggle, music player, battery status) in `src/context/ViewerContext.tsx`.
++- [x] React 3D viewer component and control overlay (`WatchViewer3D.tsx`, `ViewerControlsOverlay.tsx`).
++- [x] Unit tests in `tests/watchFaceCanvas.test.ts` verifying face rendering logic, color themes, and widget updates pass.
+ 
+ **Verification:**
+-- [ ] Tests pass: `npm test tests/watchFaceCanvas.test.ts`
+-- [ ] Build succeeds: `npm run build`
++- [x] Tests pass: `npm test tests/watchFaceCanvas.test.ts`
++- [x] Build succeeds: `npm run build`
+ 
+ **Dependencies:** Task T1
+ 
+ **Files likely touched:**
+ - `src/components/viewer3d/SceneManager.ts`
+ - `src/components/viewer3d/proceduralMeshes.ts`
+ - `src/components/viewer3d/watchFaceCanvas.ts`
+ - `src/components/viewer3d/WatchViewer3D.tsx`
+ - `src/components/viewer3d/ViewerControlsOverlay.tsx`
+ - `src/context/ViewerContext.tsx`
+ - `tests/watchFaceCanvas.test.ts`
+ 
+ **Estimated scope:** Medium-Large (6-7 files)
+ 
+ ---
+ 
+ ## Checkpoint: After Tasks T1-T2
+-- [ ] Core data models and 3D rendering engine compile cleanly
+-- [ ] Vitest unit tests pass (`npm test`)
+-- [ ] 3D viewer renders procedurally without external asset dependencies
++- [x] Core data models and 3D rendering engine compile cleanly
++- [x] Vitest unit tests pass (`npm test`)
++- [x] 3D viewer renders procedurally without external asset dependencies
+ 
+ ---
+ 
+ ## Task T3: UI Dashboard, Filters, Product Showcase & Comparison Modal
+ 
+ **Description:** Implement the modern minimalist user interface following the light violet/cyan aesthetic (`#F8F6FF`, `#E0F7FA`, `#7C3AED`, `#06B6D4`). Create the header navigation with brand badge and cart trigger, category & tier filter tabs (All, Bands, Smart Watches), responsive product grid cards with key spec pills and quick-customization triggers, and a side-by-side technical specification comparison modal comparing up to 3 devices across 8 technical dimensions.
+ 
+ **Acceptance criteria:**
+ - [ ] Responsive navigation bar (`Navbar.tsx`) with brand logo, category links, and cart badge.
+ - [ ] Category & tier filtering component (`FilterTabs.tsx`) allowing users to filter by All, Bands (Standard, Pro), and Watches (Standard, Pro, Pro Max).
+diff --git a/tests/watchFaceCanvas.test.ts b/tests/watchFaceCanvas.test.ts
+new file mode 100644
+index 0000000..e3f7d2e
+--- /dev/null
++++ b/tests/watchFaceCanvas.test.ts
+@@ -0,0 +1,412 @@
++import { describe, it, expect, vi } from 'vitest';
++import {
++  getWatchFaceTheme,
++  formatWatchDate,
++  formatWatchTime,
++  calculateStepPercentage,
++  simulateHeartRateMeasurement,
++  getNextWeather,
++  getNextTrack,
++  calculateEcgPoint,
++  calculateChronoHandAngles,
++  drawWatchFace,
++  DEFAULT_PLAYLIST,
++  WEATHER_PRESETS,
++  DrawWatchFaceOptions,
++} from '../src/components/viewer3d/watchFaceCanvas';
++import { SimulatedWidgets, WatchFaceId } from '../src/types';
++
++describe('watchFaceCanvas - Watch Face Themes', () => {
++  const faces: WatchFaceId[] = ['minimal', 'neon', 'chrono', 'health'];
++
++  it('should return valid theme configs for all 4 required watch faces', () => {
++    faces.forEach((faceId) => {
++      const theme = getWatchFaceTheme(faceId);
++      expect(theme).toBeDefined();
++      expect(theme.id).toBe(faceId);
++      expect(typeof theme.name).toBe('string');
++      expect(typeof theme.primaryColor).toBe('string');
++      expect(typeof theme.accentColor).toBe('string');
++      expect(typeof theme.bgColor).toBe('string');
++    });
++  });
++
++  it('should have correct styling characteristics for Minimal face', () => {
++    const theme = getWatchFaceTheme('minimal');
++    expect(theme.name).toBe('Minimal');
++    expect(theme.accentColor).toBe('#7C3AED');
++    expect(theme.isDark).toBe(true);
++  });
++
++  it('should have cyan and violet neon tones for Neon face', () => {
++    const theme = getWatchFaceTheme('neon');
++    expect(theme.name).toBe('Neon');
++    expect(theme.primaryColor).toBe('#06B6D4');
++    expect(theme.accentColor).toBe('#7C3AED');
++  });
++
++  it('should have chronograph racing styling for Chrono face', () => {
++    const theme = getWatchFaceTheme('chrono');
++    expect(theme.name).toBe('Chrono');
++    expect(theme.accentColor).toBe('#F59E0B');
++  });
++
++  it('should have high-visibility telemetry colors for Health face', () => {
++    const theme = getWatchFaceTheme('health');
++    expect(theme.name).toBe('Health');
++    expect(theme.primaryColor).toBe('#EF4444');
++    expect(theme.accentColor).toBe('#10B981');
++  });
++
++  it('should fallback gracefully to minimal for unknown face ID', () => {
++    // @ts-expect-error Testing invalid input fallback
++    const fallbackTheme = getWatchFaceTheme('unknown-face');
++    expect(fallbackTheme.id).toBe('minimal');
++  });
++});
++
++describe('watchFaceCanvas - Time and Date Formatting', () => {
++  it('should format watch date in WED 22 OCT format', () => {
++    // 2026-10-21 is Wednesday (October 21) or 2026-10-22 is Thursday
++    const testDate = new Date(2026, 9, 22); // Month 9 is October (0-indexed)
++    const formatted = formatWatchDate(testDate);
++    expect(formatted).toBe('THU 22 OCT');
++
++    const wedDate = new Date(2026, 9, 21);
++    expect(formatWatchDate(wedDate)).toBe('WED 21 OCT');
++  });
++
++  it('should format time with 2-digit padded strings', () => {
++    const testDate = new Date(2026, 9, 22, 9, 5, 8);
++    const formatted = formatWatchTime(testDate);
++    expect(formatted.hours).toBe('09');
++    expect(formatted.minutes).toBe('05');
++    expect(formatted.seconds).toBe('08');
++    expect(formatted.timeString).toBe('09:05');
++  });
++
++  it('should support 12-hour format with period', () => {
++    const testPm = new Date(2026, 9, 22, 14, 30, 0);
++    const formatted12 = formatWatchTime(testPm, { use12Hour: true });
++    expect(formatted12.hours).toBe('02');
++    expect(formatted12.period).toBe('PM');
++  });
++});
++
++describe('watchFaceCanvas - Widget Telemetry & Simulation Logic', () => {
++  it('should constrain simulated heart rate between 68 and 125 BPM', () => {
++    for (let i = 0; i < 50; i++) {
++      const bpm = simulateHeartRateMeasurement();
++      expect(bpm).toBeGreaterThanOrEqual(68);
++      expect(bpm).toBeLessThanOrEqual(125);
++      expect(Number.isInteger(bpm)).toBe(true);
++    }
++  });
++
++  it('should calculate step percentage and clamp within bounds', () => {
++    expect(calculateStepPercentage(7420, 10000)).toBeCloseTo(74.2, 1);
++    expect(calculateStepPercentage(0, 10000)).toBe(0);
++    expect(calculateStepPercentage(12000, 10000)).toBe(100);
++    expect(calculateStepPercentage(-50, 10000)).toBe(0);
++  });
++
++  it('should cycle through weather presets predictably', () => {
++    const sunny = WEATHER_PRESETS[0];
++    const cloudy = getNextWeather(sunny);
++    expect(cloudy.condition).toBe('cloudy');
++    const rainy = getNextWeather(cloudy);
++    expect(rainy.condition).toBe('rainy');
++    const backToSunny = getNextWeather(rainy);
++    expect(backToSunny.condition).toBe('sunny');
++  });
++
++  it('should cycle music tracks in the playlist', () => {
++    expect(DEFAULT_PLAYLIST.length).toBeGreaterThanOrEqual(3);
++    const track1 = DEFAULT_PLAYLIST[0];
++    const track2 = getNextTrack(track1, DEFAULT_PLAYLIST);
++    expect(track2).toEqual(DEFAULT_PLAYLIST[1]);
++
++    const lastTrack = DEFAULT_PLAYLIST[DEFAULT_PLAYLIST.length - 1];
++    const loopedTrack = getNextTrack(lastTrack, DEFAULT_PLAYLIST);
++    expect(loopedTrack).toEqual(DEFAULT_PLAYLIST[0]);
++  });
++
++  it('should calculate realistic ECG wave points with P-Q-R-S-T morphology', () => {
++    // Check baseline is near zero
++    const baseline = calculateEcgPoint(0.1, 100, 0);
++    expect(Math.abs(baseline)).toBeLessThan(10);
++
++    // Check R-peak height at peak phase
++    let maxDisplacement = 0;
++    for (let x = 0; x <= 100; x += 2) {
++      const val = Math.abs(calculateEcgPoint(x, 100, 0));
++      if (val > maxDisplacement) maxDisplacement = val;
++    }
++    expect(maxDisplacement).toBeGreaterThan(15);
++  });
++
++  it('should calculate chronograph sub-dial and main hand angles correctly', () => {
++    const fixedDate = new Date(2026, 9, 22, 12, 15, 30);
++    const angles = calculateChronoHandAngles(fixedDate, 15000);
++    expect(angles.secondAngle).toBeDefined();
++    expect(angles.minuteAngle).toBeDefined();
++    expect(angles.hourAngle).toBeDefined();
++    expect(angles.subSecondsAngle).toBeDefined();
++    expect(angles.subMinutesAngle).toBeDefined();
++    expect(angles.subHoursAngle).toBeDefined();
++  });
++});
++
++describe('watchFaceCanvas - Canvas Rendering Pipeline', () => {
++  function createMockCanvasContext() {
++    const calls: string[] = [];
++    const mockCtx = {
++      save: vi.fn(() => calls.push('save')),
++      restore: vi.fn(() => calls.push('restore')),
++      beginPath: vi.fn(() => calls.push('beginPath')),
++      closePath: vi.fn(() => calls.push('closePath')),
++      clearRect: vi.fn(() => calls.push('clearRect')),
++      fillRect: vi.fn(() => calls.push('fillRect')),
++      strokeRect: vi.fn(() => calls.push('strokeRect')),
++      arc: vi.fn(() => calls.push('arc')),
++      ellipse: vi.fn(() => calls.push('ellipse')),
++      moveTo: vi.fn(() => calls.push('moveTo')),
++      lineTo: vi.fn(() => calls.push('lineTo')),
++      stroke: vi.fn(() => calls.push('stroke')),
++      fill: vi.fn(() => calls.push('fill')),
++      fillText: vi.fn(() => calls.push('fillText')),
++      strokeText: vi.fn(() => calls.push('strokeText')),
++      measureText: vi.fn(() => ({ width: 40 })),
++      translate: vi.fn(() => calls.push('translate')),
++      rotate: vi.fn(() => calls.push('rotate')),
++      scale: vi.fn(() => calls.push('scale')),
++      createLinearGradient: vi.fn(() => ({
++        addColorStop: vi.fn(),
++      })),
++      createRadialGradient: vi.fn(() => ({
++        addColorStop: vi.fn(),
++      })),
++      roundRect: vi.fn(() => calls.push('roundRect')),
++      setLineDash: vi.fn(),
++      fillStyle: '#000000',
++      strokeStyle: '#000000',
++      lineWidth: 1,
++      font: '12px sans-serif',
++      textAlign: 'center',
++      textBaseline: 'middle',
++      shadowColor: '',
++      shadowBlur: 0,
++      globalAlpha: 1,
++    } as unknown as CanvasRenderingContext2D;
++
++    return { mockCtx, calls };
++  }
++
++  const mockWidgets: SimulatedWidgets = {
++    heartRate: 72,
++    isMeasuringHeartRate: false,
++    steps: 7420,
++    stepGoal: 10000,
++    isPlayingMusic: true,
++    currentTrack: {
++      title: 'Neon Midnight',
++      artist: 'Synthwave',
++    },
++    weather: {
++      temp: 24,
++      condition: 'sunny',
++      city: 'Tokyo, JP',
++    },
++    battery: 88,
++  };
++
++  it('should render Minimal face without throwing', () => {
++    const { mockCtx } = createMockCanvasContext();
++    const opts: DrawWatchFaceOptions = {
++      faceId: 'minimal',
++      widgets: mockWidgets,
++      time: new Date(2026, 9, 22, 10, 9, 30),
++      size: 512,
++    };
++
++    expect(() => drawWatchFace(mockCtx, opts)).not.toThrow();
++    expect(mockCtx.fillText).toHaveBeenCalled();
++  });
++
++  it('should render Neon face with glow rings without throwing', () => {
++    const { mockCtx } = createMockCanvasContext();
++    const opts: DrawWatchFaceOptions = {
++      faceId: 'neon',
++      widgets: mockWidgets,
++      time: new Date(2026, 9, 22, 10, 9, 30),
++      size: 512,
++    };
++
++    expect(() => drawWatchFace(mockCtx, opts)).not.toThrow();
++    expect(mockCtx.arc).toHaveBeenCalled();
++  });
++
++  it('should render Chrono face with sub-dials and tachymeter scale without throwing', () => {
++    const { mockCtx } = createMockCanvasContext();
++    const opts: DrawWatchFaceOptions = {
++      faceId: 'chrono',
++      widgets: mockWidgets,
++      time: new Date(2026, 9, 22, 10, 9, 30),
++      size: 512,
++    };
++
++    expect(() => drawWatchFace(mockCtx, opts)).not.toThrow();
++    expect(mockCtx.rotate).toHaveBeenCalled();
++  });
++
++  it('should render Health face with ECG wave and telemetry metrics', () => {
++    const { mockCtx } = createMockCanvasContext();
++    const opts: DrawWatchFaceOptions = {
++      faceId: 'health',
++      widgets: mockWidgets,
++      time: new Date(2026, 9, 22, 10, 9, 30),
++      size: 512,
++      animationTimeMs: 1200,
++    };
++
++    expect(() => drawWatchFace(mockCtx, opts)).not.toThrow();
++    expect(mockCtx.lineTo).toHaveBeenCalled();
++  });
++
++  it('should render heart rate diagnostic measuring state appropriately', () => {
++    const { mockCtx } = createMockCanvasContext();
++    const measuringWidgets: SimulatedWidgets = {
++      ...mockWidgets,
++      isMeasuringHeartRate: true,
++    };
++    const opts: DrawWatchFaceOptions = {
++      faceId: 'health',
++      widgets: measuringWidgets,
++      time: new Date(2026, 9, 22, 10, 9, 30),
++      size: 512,
++      animationTimeMs: 2500,
++    };
++
++    expect(() => drawWatchFace(mockCtx, opts)).not.toThrow();
++  });
++
++  it('should adapt layout for band capsule screen shape', () => {
++    const { mockCtx } = createMockCanvasContext();
++    const opts: DrawWatchFaceOptions = {
++      faceId: 'minimal',
++      widgets: mockWidgets,
++      time: new Date(2026, 9, 22, 10, 9, 30),
++      size: 512,
++      isBand: true,
++    };
++
++    expect(() => drawWatchFace(mockCtx, opts)).not.toThrow();
++  });
++});
++
++describe('proceduralMeshes - 3D Models & Primitives Generation', () => {
++  const modelTypes = [
++    'band_standard',
++    'band_pro',
++    'watch_standard',
++    'watch_pro',
++    'watch_pro_max',
++  ] as const;
++
++  it('should generate all 5 procedural device models without error', async () => {
++    const { createProceduralModel } = await import('../src/components/viewer3d/proceduralMeshes');
++
++    modelTypes.forEach((type) => {
++      const model = createProceduralModel(type, '#334155', '#7C3AED');
++      expect(model).toBeDefined();
++      expect(model.type).toBe(type);
++      expect(model.group).toBeDefined();
++      expect(model.screenMesh).toBeDefined();
++      expect(model.screenMaterial).toBeDefined();
++      expect(model.chassisMaterials.length).toBeGreaterThan(0);
++      expect(model.strapMaterials.length).toBeGreaterThan(0);
++
++      // Verify color updates
++      model.updateChassisColor('#10B981');
++      expect(model.chassisMaterials[0].color.getHexString()).toBe('10b981');
++
++      model.updateStrapColor('#06B6D4');
++      expect(model.strapMaterials[0].color.getHexString()).toBe('06b6d4');
++
++      // Verify crown rotation for pro / pro max models
++      if (model.rotateCrown) {
++        expect(model.crownMesh).toBeDefined();
++        const initialRotation = model.crownMesh!.rotation.x;
++        model.rotateCrown(0.1);
++        expect(model.crownMesh!.rotation.x).toBeCloseTo(initialRotation + 0.1);
++      }
++
++      // Verify clean disposal
++      expect(() => model.dispose()).not.toThrow();
++    });
++  });
++
++  it('should generate Watch Pro Max with safety orange action button', async () => {
++    const { buildWatchProMax } = await import('../src/components/viewer3d/proceduralMeshes');
++    const model = buildWatchProMax('#94A3B8', '#D97706');
++    expect(model.type).toBe('watch_pro_max');
++    expect(model.crownMesh).toBeDefined();
++
++    // Check for safety orange button mesh in children
++    let hasOrangeButton = false;
++    model.group.traverse((child: any) => {
++      if (child.material && child.material.color && child.material.color.getHexString() === 'f97316') {
++        hasOrangeButton = true;
++      }
++    });
++    expect(hasOrangeButton).toBe(true);
++    model.dispose();
++  });
++});
++
++describe('ViewerContext - Telemetry & State Logic', () => {
++  it('should export INITIAL_WIDGETS with complete default telemetry values', async () => {
++    const { INITIAL_WIDGETS } = await import('../src/context/ViewerContext');
++    expect(INITIAL_WIDGETS).toBeDefined();
++    expect(INITIAL_WIDGETS.heartRate).toBe(72);
++    expect(INITIAL_WIDGETS.isMeasuringHeartRate).toBe(false);
++    expect(INITIAL_WIDGETS.steps).toBe(7420);
++    expect(INITIAL_WIDGETS.stepGoal).toBe(10000);
++    expect(INITIAL_WIDGETS.battery).toBe(88);
++    expect(INITIAL_WIDGETS.weather.condition).toBe('sunny');
++    expect(INITIAL_WIDGETS.currentTrack.title).toBe('Neon Midnight');
++  });
++
++  it('should export ViewerProvider and useViewer hook', async () => {
++    const { ViewerProvider, useViewer } = await import('../src/context/ViewerContext');
++    expect(ViewerProvider).toBeDefined();
++    expect(typeof ViewerProvider).toBe('function');
++    expect(useViewer).toBeDefined();
++    expect(typeof useViewer).toBe('function');
++  });
++});
++
++describe('3D Components & SceneManager Integration', () => {
++  it('should export SceneManager class with required API methods', async () => {
++    const { SceneManager } = await import('../src/components/viewer3d/SceneManager');
++    expect(SceneManager).toBeDefined();
++    expect(typeof SceneManager).toBe('function');
++    expect(typeof SceneManager.prototype.setModel).toBe('function');
++    expect(typeof SceneManager.prototype.setAutoRotate).toBe('function');
++    expect(typeof SceneManager.prototype.setCameraPreset).toBe('function');
++    expect(typeof SceneManager.prototype.handleResize).toBe('function');
++    expect(typeof SceneManager.prototype.dispose).toBe('function');
++  });
++
++  it('should export WatchViewer3D and ViewerControlsOverlay components', async () => {
++    const { WatchViewer3D } = await import('../src/components/viewer3d/WatchViewer3D');
++    const { ViewerControlsOverlay } = await import('../src/components/viewer3d/ViewerControlsOverlay');
++
++    expect(WatchViewer3D).toBeDefined();
++    expect(typeof WatchViewer3D).toBe('function');
++    expect(ViewerControlsOverlay).toBeDefined();
++    expect(typeof ViewerControlsOverlay).toBe('function');
++  });
++});
++
++

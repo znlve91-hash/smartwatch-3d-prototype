@@ -1,0 +1,301 @@
+# Review package: final-fix
+mode: worktree against base 8fa55bee6083acad3ea16d5647dc3c180d8d76ee
+artifact-hash: f7354709966dab3d4d0252adc27eafb777d76568
+files-changed: 6
+
+## Stat
+ index.html                                | 13 +++++
+ src/App.tsx                               |  2 -
+ src/components/viewer3d/SceneManager.ts   |  7 +++
+ src/components/viewer3d/WatchViewer3D.tsx | 31 +++++++++--
+ tests/sceneManager.test.ts                | 88 +++++++++++++++++++++++++++++++
+ vite.config.ts                            | 23 ++------
+ 6 files changed, 139 insertions(+), 25 deletions(-)
+
+## Diff
+diff --git a/index.html b/index.html
+new file mode 100644
+index 0000000..03db429
+--- /dev/null
++++ b/index.html
+@@ -0,0 +1,13 @@
++<!DOCTYPE html>
++<html lang="en">
++  <head>
++    <meta charset="UTF-8" />
++    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
++    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
++    <title>Horizon Wearables - 3D Interactive Studio</title>
++  </head>
++  <body>
++    <div id="root"></div>
++    <script type="module" src="/src/main.tsx"></script>
++  </body>
++</html>
+diff --git a/src/App.tsx b/src/App.tsx
+index 100cdd1..bda13d2 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -1,17 +1,15 @@
+ import React, { useState } from 'react';
+ import {
+   Sparkles,
+   ShoppingBag,
+-  Palette,
+   Check,
+-  Watch,
+   Sliders,
+   Layers,
+   ArrowRight,
+ } from 'lucide-react';
+ import { ViewerProvider, useViewer } from './context/ViewerContext';
+ import { CartProvider, useCart } from './context/CartContext';
+ import { PRODUCTS, WATCH_FACES } from './data/products';
+ import { ColorOption, ProductCategory, WatchFaceId } from './types';
+ import { formatCurrency, formatTierName } from './utils/formatters';
+ 
+diff --git a/src/components/viewer3d/SceneManager.ts b/src/components/viewer3d/SceneManager.ts
+index 6a50276..df3add5 100644
+--- a/src/components/viewer3d/SceneManager.ts
++++ b/src/components/viewer3d/SceneManager.ts
+@@ -166,20 +166,27 @@ export class SceneManager {
+     this.scene.add(newModel.group);
+   }
+ 
+   /**
+    * Gets the active procedural model.
+    */
+   public getModel(): ProceduralModel | null {
+     return this.currentModel;
+   }
+ 
++  /**
++   * Sets or updates the animation render frame callback.
++   */
++  public setOnRenderFrame(callback?: (timeMs: number) => void): void {
++    this.onRenderFrameCallback = callback;
++  }
++
+   /**
+    * Toggles turntable auto-rotation.
+    */
+   public setAutoRotate(enabled: boolean): void {
+     this.controls.autoRotate = enabled;
+   }
+ 
+   /**
+    * Transitions camera to a preset view angle:
+    * 'front', 'angle', 'side', or 'reset'.
+diff --git a/src/components/viewer3d/WatchViewer3D.tsx b/src/components/viewer3d/WatchViewer3D.tsx
+index be5f1b2..e5c66cc 100644
+--- a/src/components/viewer3d/WatchViewer3D.tsx
++++ b/src/components/viewer3d/WatchViewer3D.tsx
+@@ -59,20 +59,37 @@ export const WatchViewer3D: React.FC<WatchViewer3DProps> = ({ className = '' })
+         size: canvas.width,
+         animationTimeMs: animTimeMs ?? performance.now(),
+         isBand,
+       });
+ 
+       texture.needsUpdate = true;
+     },
+     [selectedWatchFace, simulatedWidgets, isBand]
+   );
+ 
++  // Store latest values in ref to prevent stale closures in animation render frame callback
++  const latestRef = useRef({
++    selectedWatchFace,
++    simulatedWidgets,
++    isBand,
++    updateFaceCanvas,
++  });
++
++  useEffect(() => {
++    latestRef.current = {
++      selectedWatchFace,
++      simulatedWidgets,
++      isBand,
++      updateFaceCanvas,
++    };
++  }, [selectedWatchFace, simulatedWidgets, isBand, updateFaceCanvas]);
++
+   // 1. Initialize SceneManager and Offscreen CanvasTexture
+   useEffect(() => {
+     if (!containerRef.current) return;
+ 
+     try {
+       // Create offscreen canvas for dynamic watch face rendering (512x512)
+       const offscreenCanvas = document.createElement('canvas');
+       offscreenCanvas.width = 512;
+       offscreenCanvas.height = 512;
+       offscreenCanvasRef.current = offscreenCanvas;
+@@ -86,31 +103,37 @@ export const WatchViewer3D: React.FC<WatchViewer3DProps> = ({ className = '' })
+ 
+       // Initial draw
+       updateFaceCanvas();
+ 
+       // Instantiate SceneManager with onRenderFrame hook
+       let lastFaceUpdate = 0;
+       const sceneManager = new SceneManager({
+         container: containerRef.current,
+         initialPreset: 'angle',
+         onRenderFrame: (timeMs) => {
++          const {
++            selectedWatchFace: currentFace,
++            simulatedWidgets: currentWidgets,
++            updateFaceCanvas: currentUpdateFaceCanvas,
++          } = latestRef.current;
++
+           // Smoothly animate watch face telemetry:
+           // Health ECG waves and pulsating measuring heart rate update at ~30 FPS;
+           // static faces update at ~2 FPS to conserve GPU cycles.
+           const isHighRate =
+-            selectedWatchFace === 'health' ||
+-            selectedWatchFace === 'neon' ||
+-            simulatedWidgets.isMeasuringHeartRate;
++            currentFace === 'health' ||
++            currentFace === 'neon' ||
++            currentWidgets.isMeasuringHeartRate;
+           const threshold = isHighRate ? 33 : 500;
+ 
+           if (timeMs - lastFaceUpdate > threshold) {
+-            updateFaceCanvas(undefined, timeMs);
++            currentUpdateFaceCanvas(undefined, timeMs);
+             lastFaceUpdate = timeMs;
+           }
+         },
+       });
+ 
+       sceneManagerRef.current = sceneManager;
+       setWebGLError(null);
+     } catch (err) {
+       console.warn('WebGL initialization failed, falling back to 2D preview:', err);
+       setWebGLError(err instanceof Error ? err.message : 'WebGL unsupported');
+diff --git a/tests/sceneManager.test.ts b/tests/sceneManager.test.ts
+new file mode 100644
+index 0000000..06bd8fe
+--- /dev/null
++++ b/tests/sceneManager.test.ts
+@@ -0,0 +1,88 @@
++import { describe, it, expect, vi } from 'vitest';
++import { SceneManager } from '../src/components/viewer3d/SceneManager';
++
++describe('SceneManager - REQ-01 setOnRenderFrame', () => {
++  it('should define setOnRenderFrame method on SceneManager', () => {
++    expect(typeof SceneManager.prototype.setOnRenderFrame).toBe('function');
++  });
++
++  it('should update onRenderFrameCallback via setOnRenderFrame', () => {
++    const fakeInstance = Object.create(SceneManager.prototype);
++    const cb = vi.fn();
++    fakeInstance.setOnRenderFrame(cb);
++    expect((fakeInstance as any).onRenderFrameCallback).toBe(cb);
++
++    fakeInstance.setOnRenderFrame(undefined);
++    expect((fakeInstance as any).onRenderFrameCallback).toBeUndefined();
++  });
++});
++
++describe('WatchViewer3D - CRIT-02 latestRef Stale Closure Safeguard', () => {
++  it('should read latest dynamic state from mutable ref without stale closure', () => {
++    // Simulate the latestRef pattern used in WatchViewer3D
++    let lastFaceUpdate = 0;
++    const initialUpdateFaceCanvas = vi.fn();
++    const updatedUpdateFaceCanvas = vi.fn();
++
++    const latestRef = {
++      current: {
++        selectedWatchFace: 'minimal' as const,
++        simulatedWidgets: {
++          heartRate: 72,
++          isMeasuringHeartRate: false,
++          steps: 5000,
++          stepGoal: 10000,
++          isPlayingMusic: false,
++          currentTrack: null,
++          weather: { temp: 20, condition: 'sunny' as const, city: 'Cupertino' },
++          battery: 85,
++        },
++        isBand: false,
++        updateFaceCanvas: initialUpdateFaceCanvas,
++      },
++    };
++
++    const onRenderFrame = (timeMs: number) => {
++      const {
++        selectedWatchFace: currentFace,
++        simulatedWidgets: currentWidgets,
++        updateFaceCanvas: currentUpdateFaceCanvas,
++      } = latestRef.current;
++
++      const isHighRate =
++        currentFace === 'health' ||
++        currentFace === 'neon' ||
++        currentWidgets.isMeasuringHeartRate;
++      const threshold = isHighRate ? 33 : 500;
++
++      if (timeMs - lastFaceUpdate > threshold) {
++        currentUpdateFaceCanvas(undefined, timeMs);
++        lastFaceUpdate = timeMs;
++      }
++    };
++
++    // Frame 1: Initial minimal face with threshold = 500ms
++    onRenderFrame(100);
++    expect(initialUpdateFaceCanvas).not.toHaveBeenCalled();
++
++    onRenderFrame(600);
++    expect(initialUpdateFaceCanvas).toHaveBeenCalledTimes(1);
++
++    // Now update state (user switches to health face and measuring heart rate)
++    latestRef.current = {
++      selectedWatchFace: 'health' as const,
++      simulatedWidgets: {
++        ...latestRef.current.simulatedWidgets,
++        isMeasuringHeartRate: true,
++      },
++      isBand: false,
++      updateFaceCanvas: updatedUpdateFaceCanvas,
++    };
++
++    // Frame 2: Should now recognize high rate threshold (33ms) and invoke the NEW updateFaceCanvas
++    onRenderFrame(640);
++    expect(updatedUpdateFaceCanvas).toHaveBeenCalledWith(undefined, 640);
++    // Initial callback should not have been called again
++    expect(initialUpdateFaceCanvas).toHaveBeenCalledTimes(1);
++  });
++});
+diff --git a/vite.config.ts b/vite.config.ts
+index dc7c10d..1d34140 100644
+--- a/vite.config.ts
++++ b/vite.config.ts
+@@ -1,26 +1,11 @@
+ import { defineConfig } from 'vite';
+ import react from '@vitejs/plugin-react';
+-import { resolve } from 'path';
+-import fs from 'fs';
+-
+-const hasIndexHtml = fs.existsSync(resolve(__dirname, 'index.html'));
+ 
+ // https://vitejs.dev/config/
+ export default defineConfig({
+   plugins: [react()],
+-  build: hasIndexHtml
+-    ? {
+-        outDir: 'dist',
+-        sourcemap: true,
+-      }
+-    : {
+-        lib: {
+-          entry: resolve(__dirname, 'src/data/products.ts'),
+-          name: 'SmartwatchProto',
+-          fileName: 'smartwatch-prototype',
+-          formats: ['es'],
+-        },
+-        outDir: 'dist',
+-        sourcemap: true,
+-      },
++  build: {
++    outDir: 'dist',
++    sourcemap: true,
++  },
+ });
