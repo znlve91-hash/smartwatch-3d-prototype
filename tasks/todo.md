@@ -28,31 +28,31 @@
 **Description:** Implement the procedural 3D wearable rendering engine in Three.js, supporting both Smart Watch and Band geometries, a dynamic 512x512 Canvas texture generator for 4 watch faces (Minimal, Neon, Chrono, Health) and 5 simulated widgets (Heart Rate, Steps, Weather, Music, Battery), with 360-degree orbit rotation, auto-spin toggle, zoom controls, reset angle, and live color customization.
 
 **Acceptance Criteria:**
-- [ ] `src/components/3d/ProceduralWatchMesh.js` constructs high-fidelity procedural 3D models for both Smart Band (elongated capsule, silicone strap) and Smart Watch (chamfered bevel disk, crown button, lug attachments, segmented strap).
-- [ ] `src/components/3d/WatchCanvasTexture.js` dynamically renders 4 distinct watch faces on a 512x512 canvas:
+- [x] `src/components/3d/ProceduralWatchMesh.js` constructs high-fidelity procedural 3D models for both Smart Band (elongated capsule, silicone strap) and Smart Watch (chamfered bevel disk, crown button, lug attachments, segmented strap).
+- [x] `src/components/3d/WatchCanvasTexture.js` dynamically renders 4 distinct watch faces on a 512x512 canvas:
   - Minimal: Clean typography, sleek hour/minute hands, minimal date
   - Neon: Glowing cyber cyan/purple digital clock, pulsating second ring
   - Chrono: Luxury chronograph with 3 sub-dials, tachymeter scale, metallic indices
   - Health: Concentric activity rings (Move, Exercise, Stand) and live metric readouts
-- [ ] Dynamic widgets can be simulated and updated on the watch face (Heart Rate pulse, Step counter progress, Weather forecast, Music playback toggle, Battery status).
-- [ ] `src/components/3d/WatchViewer3D.jsx` supports smooth 360° mouse drag orbit, touch rotation, auto-spin toggle (1.5 RPM), zoom in/out, and reset view.
-- [ ] `src/components/3d/ViewerControls.jsx` provides an interactive floating dock to switch models, watch faces, widgets, and strap/casing colorways in real time.
-- [ ] WebGL resources and animation frame loops are properly cleaned up on unmount.
-- [ ] Unit tests in `tests/watchTexture.test.js` verify canvas face rendering logic and widget state updates.
+- [x] Dynamic widgets can be simulated and updated on the watch face (Heart Rate pulse, Step counter progress, Weather forecast, Music playback toggle, Battery status).
+- [x] `src/components/3d/WatchViewer3D.jsx` supports smooth 360° mouse drag orbit, touch rotation, auto-spin toggle (1.5 RPM), zoom in/out, and reset view.
+- [x] `src/components/3d/ViewerControls.jsx` provides an interactive floating dock to switch models, watch faces, widgets, and strap/casing colorways in real time.
+- [x] WebGL resources and animation frame loops are properly cleaned up on unmount.
+- [x] Unit tests in `tests/watchTexture.test.js` verify canvas face rendering logic and widget state updates.
 
 **Verification:**
-- [ ] Tests pass: `npm test`
-- [ ] Build succeeds: `npm run build`
+- [x] Tests pass: `npm test`
+- [x] Build succeeds: `npm run build`
 
 **Dependencies:** Task T1
 
 ---
 
 ## Checkpoint 1: 3D Studio & Core Data Foundation
-- [ ] Product catalog schema and taxonomy tests pass
-- [ ] 3D procedural engine renders Band and Watch geometries without WebGL errors
-- [ ] All 4 watch faces and 5 widgets render correctly onto the canvas texture
-- [ ] All tests pass via `npm test`
+- [x] Product catalog schema and taxonomy tests pass
+- [x] 3D procedural engine renders Band and Watch geometries without WebGL errors
+- [x] All 4 watch faces and 5 widgets render correctly onto the canvas texture
+- [x] All tests pass via `npm test`
 
 ---
 
