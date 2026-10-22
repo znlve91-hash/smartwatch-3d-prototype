@@ -7,14 +7,14 @@
 **Description:** Set up the project foundation by configuring the Tailwind CSS theme with the specified minimalist soft purple and cyan palette, declaring all domain TypeScript schemas and interfaces, creating the complete 5-item wearable mock catalog across categories and tiers, and authoring unit tests verifying data integrity.
 
 **Acceptance criteria:**
-- [ ] `tailwind.config.js` and `src/index.css` configured with soft purple & cyan palette tokens (`#F8F6FF`, `#E0F7FA`, `#7C3AED`, `#06B6D4`) and modern typography utilities.
-- [ ] `src/types/index.ts` declares comprehensive TypeScript models: `Product`, `ProductCategory` (`band` | `watch`), `ProductTier` (`standard` | `pro` | `pro_max`), `ColorOption`, `WatchFaceId`, `ActiveWidgetId`, `CartItem`, and `CartState`.
-- [ ] `src/data/products.ts` exports exactly 5 wearable devices matching specifications: 2 Smart Bands (Standard, Pro) and 3 Smart Watches (Standard, Pro, Pro Max) with detailed specifications, pricing, and color options.
-- [ ] `tests/products.test.ts` authoritatively tests taxonomy completeness, pricing logic, required specs, and category constraints.
+- [x] `tailwind.config.js` and `src/index.css` configured with soft purple & cyan palette tokens (`#F8F6FF`, `#E0F7FA`, `#7C3AED`, `#06B6D4`) and modern typography utilities.
+- [x] `src/types/index.ts` declares comprehensive TypeScript models: `Product`, `ProductCategory` (`band` | `watch`), `ProductTier` (`standard` | `pro` | `pro_max`), `ColorOption`, `WatchFaceId`, `ActiveWidgetId`, `CartItem`, and `CartState`.
+- [x] `src/data/products.ts` exports exactly 5 wearable devices matching specifications: 2 Smart Bands (Standard, Pro) and 3 Smart Watches (Standard, Pro, Pro Max) with detailed specifications, pricing, and color options.
+- [x] `tests/products.test.ts` authoritatively tests taxonomy completeness, pricing logic, required specs, and category constraints.
 
 **Verification:**
-- [ ] Tests pass: `npm test tests/products.test.ts`
-- [ ] Build succeeds: `npm run build`
+- [x] Tests pass: `npm test tests/products.test.ts`
+- [x] Build succeeds: `npm run build`
 
 **Dependencies:** None
 
