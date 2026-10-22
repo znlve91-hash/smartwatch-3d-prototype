@@ -77,15 +77,15 @@
 **Description:** Implement the application shell, modern minimalist light theme UI layout, responsive navigation header with cart trigger, high-impact hero showcase with embedded 3D viewer, product catalog grid with category (Band vs Watch) and tier filtering (Standard, Pro, Pro Max), and a side-by-side hardware comparison modal.
 
 **Acceptance criteria:**
-- [ ] `src/components/layout/Navbar.tsx` renders brand logo, navigation links, search trigger, and cart drawer button with count badge.
-- [ ] `src/components/catalog/ProductCatalog.tsx` displays filterable product grid with category tabs (`All`, `Smart Bands`, `Smart Watches`) and tier pill filters (`Standard`, `Pro`, `Pro Max`).
-- [ ] `src/components/catalog/ProductCard.tsx` renders product image/preview, tier badge, color variant selector, pricing, and "3D Studio" & "Add to Bag" action buttons.
-- [ ] `src/components/catalog/CompareModal.tsx` provides a side-by-side feature comparison table across tiers and categories.
-- [ ] `src/App.tsx` integrates Hero Showcase, 3D Interactive Studio section, Catalog Grid, and Comparison modal with smooth scrolling.
+- [x] `src/components/layout/Navbar.tsx` renders brand logo, navigation links, search trigger, and cart drawer button with count badge.
+- [x] `src/components/catalog/ProductCatalog.tsx` displays filterable product grid with category tabs (`All`, `Smart Bands`, `Smart Watches`) and tier pill filters (`Standard`, `Pro`, `Pro Max`).
+- [x] `src/components/catalog/ProductCard.tsx` renders product image/preview, tier badge, color variant selector, pricing, and "3D Studio" & "Add to Bag" action buttons.
+- [x] `src/components/catalog/CompareModal.tsx` provides a side-by-side feature comparison table across tiers and categories.
+- [x] `src/App.tsx` integrates Hero Showcase, 3D Interactive Studio section, Catalog Grid, and Comparison modal with smooth scrolling.
 
 **Verification:**
-- [ ] Build succeeds: `npm run build`
-- [ ] Visual check: Responsive layout, minimalist soft purple/cyan palette, glassmorphism cards.
+- [x] Build succeeds: `npm run build`
+- [x] Visual check: Responsive layout, minimalist soft purple/cyan palette, glassmorphism cards.
 
 **Dependencies:** Task T1, Task T2
 
