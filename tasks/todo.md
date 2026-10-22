@@ -83,29 +83,29 @@
 **Description:** Implement client-side shopping cart state management (`CartContext`), slide-over cart drawer, quantity adjusters, selected color/face customization storage per item, discount coupon simulation (`NOVA10`), two-step simulated checkout modal with order confirmation receipt, toast notifications, and `localStorage` persistence.
 
 **Acceptance Criteria:**
-- [ ] `src/context/CartContext.jsx` manages cart state with actions: `addItem`, `removeItem`, `updateQuantity`, `applyCoupon`, and `clearCart`.
-- [ ] Cart state automatically syncs with `localStorage` under `novawear_cart_v1` on changes and rehydrates on page load.
-- [ ] `src/components/cart/CartDrawer.jsx` and `CartItemRow.jsx` display itemized cart entries with selected colorway and watch face, quantity controls, subtotal, discount, and tax calculation.
-- [ ] Coupon code input validates promo codes (e.g. `NOVA10` gives 10% discount) with clear feedback.
-- [ ] `src/components/cart/CheckoutModal.jsx` implements a 2-step simulated checkout:
+- [x] `src/context/CartContext.jsx` manages cart state with actions: `addItem`, `removeItem`, `updateQuantity`, `applyCoupon`, and `clearCart`.
+- [x] Cart state automatically syncs with `localStorage` under `novawear_cart_v1` on changes and rehydrates on page load.
+- [x] `src/components/cart/CartDrawer.jsx` and `CartItemRow.jsx` display itemized cart entries with selected colorway and watch face, quantity controls, subtotal, discount, and tax calculation.
+- [x] Coupon code input validates promo codes (e.g. `NOVA10` gives 10% discount) with clear feedback.
+- [x] `src/components/cart/CheckoutModal.jsx` implements a 2-step simulated checkout:
   - Step 1: Customer shipping address, contact, and shipping method
   - Step 2: Simulated payment options (Credit Card, Apple Pay / Google Pay, Cash on Delivery)
   - Order Confirmation screen displaying order ID, summary, estimated delivery, and a "Continue Shopping" reset action.
-- [ ] `src/components/common/Toast.jsx` provides non-blocking toast notifications when products are added to the cart or coupons applied.
-- [ ] Full application orchestration verified in `src/App.jsx`.
-- [ ] Unit tests in `tests/cart.test.jsx` cover cart operations, coupon calculation, checkout validation, and `localStorage` sync.
+- [x] `src/components/common/Toast.jsx` provides non-blocking toast notifications when products are added to the cart or coupons applied.
+- [x] Full application orchestration verified in `src/App.jsx`.
+- [x] Unit tests in `tests/cart.test.jsx` cover cart operations, coupon calculation, checkout validation, and `localStorage` sync.
 
 **Verification:**
-- [ ] Tests pass: `npm test`
-- [ ] Build succeeds: `npm run build`
+- [x] Tests pass: `npm test`
+- [x] Build succeeds: `npm run build`
 
 **Dependencies:** Task T1, Task T2, Task T3
 
 ---
 
 ## Checkpoint 2: Full Application Integration & Verification
-- [ ] Complete end-to-end shopping experience works smoothly: Browse -> Filter -> 3D Preview -> Customize -> Add to Cart -> Checkout -> Confirmation
-- [ ] 3D viewer interactive features (360° rotate, watch faces, widgets, color swapping) function without glitch
-- [ ] Cart persists across page reloads
-- [ ] `npm test` passes 100% of test suites
-- [ ] `npm run build` creates production bundle cleanly
+- [x] Complete end-to-end shopping experience works smoothly: Browse -> Filter -> 3D Preview -> Customize -> Add to Cart -> Checkout -> Confirmation
+- [x] 3D viewer interactive features (360° rotate, watch faces, widgets, color swapping) function without glitch
+- [x] Cart persists across page reloads
+- [x] `npm test` passes 100% of test suites
+- [x] `npm run build` creates production bundle cleanly
