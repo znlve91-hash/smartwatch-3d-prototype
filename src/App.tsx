@@ -8,6 +8,9 @@ import { CompareModal } from './components/catalog/CompareModal';
 import { WatchViewer3D } from './components/viewer3d/WatchViewer3D';
 import { Button } from './components/common/Button';
 import { Badge } from './components/common/Badge';
+import { useCart } from './hooks/useCart';
+import { CartDrawer } from './components/cart/CartDrawer';
+import { CheckoutModal } from './components/cart/CheckoutModal';
 import {
   Sparkles,
   ShoppingBag,
@@ -29,8 +32,10 @@ export const App: React.FC = () => {
     products.find((p) => p.id === 'watch-horizon-max') || products[0]
   );
 
-  // Cart state simulation
-  const [cartCount, setCartCount] = useState<number>(0);
+  // Persistent shopping cart & drawer/checkout modal states
+  const cart = useCart();
+  const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState<boolean>(false);
 
   // Modals state
   const [isCompareOpen, setIsCompareOpen] = useState<boolean>(false);
@@ -61,7 +66,7 @@ export const App: React.FC = () => {
   };
 
   const handleAddToCart = (product: Product, color: ColorOption, face: WatchFaceId) => {
-    setCartCount((prev) => prev + 1);
+    cart.addItem(product, color, face);
     showToast(`Added to your bag! ${product.name} (${color.name}) - $${product.price}`);
   };
 
@@ -105,14 +110,8 @@ export const App: React.FC = () => {
 
       {/* Global Navigation Header */}
       <Navbar
-        cartCount={cartCount}
-        onOpenCart={() => {
-          if (cartCount === 0) {
-            showToast('Your bag is currently empty. Explore our catalog below to add a wearable!');
-          } else {
-            showToast(`You have ${cartCount} wearable(s) in your bag ready for checkout.`);
-          }
-        }}
+        cartCount={cart.totalItems}
+        onOpenCart={() => setIsCartOpen(true)}
         onOpenSearch={() => setIsSearchOpen(true)}
         onNavigate={(section) => {
           if (section === 'compare') {
@@ -279,14 +278,29 @@ export const App: React.FC = () => {
                 })}
               </div>
 
-              {/* Active Studio Device Status Indicator */}
-              <div className="pt-1">
+              {/* Active Studio Device Status Indicator & Studio Add to Bag */}
+              <div className="pt-1 flex items-center justify-center gap-3 flex-wrap">
                 <span
                   data-testid="studio-active-title"
                   className="text-xs font-bold text-purple-800 bg-purple-100/80 px-3 py-1 rounded-full border border-purple-200"
                 >
                   Active Studio Device: {activeProduct.name} (${activeProduct.price})
                 </span>
+                <Button
+                  data-testid="studio-add-to-bag"
+                  variant="primary"
+                  size="sm"
+                  onClick={() =>
+                    handleAddToCart(
+                      activeProduct,
+                      activeProduct.colors[0],
+                      activeProduct.defaultFace
+                    )
+                  }
+                >
+                  <ShoppingBag className="w-3.5 h-3.5 text-white" />
+                  <span>Add to Bag</span>
+                </Button>
               </div>
             </div>
 
@@ -468,6 +482,45 @@ export const App: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Slide-over Shopping Cart Drawer */}
+      <CartDrawer
+        isOpen={isCartOpen}
+        onClose={() => setIsCartOpen(false)}
+        onProceedToCheckout={() => {
+          setIsCartOpen(false);
+          setIsCheckoutOpen(true);
+        }}
+        items={cart.items}
+        totalItems={cart.totalItems}
+        subtotal={cart.subtotal}
+        discountCode={cart.discountCode}
+        discountAmount={cart.discountAmount}
+        tax={cart.tax}
+        shipping={cart.shipping}
+        total={cart.total}
+        onUpdateQuantity={cart.updateQuantity}
+        onRemoveItem={cart.removeItem}
+        onApplyPromoCode={cart.applyPromoCode}
+        onRemovePromoCode={cart.removePromoCode}
+      />
+
+      {/* Multi-step Simulated Checkout Modal */}
+      <CheckoutModal
+        isOpen={isCheckoutOpen}
+        onClose={() => setIsCheckoutOpen(false)}
+        onCompleteOrder={() => {
+          cart.clearCart();
+          showToast('Order confirmed! Check your email for dispatch telemetry.');
+        }}
+        items={cart.items}
+        subtotal={cart.subtotal}
+        discountCode={cart.discountCode}
+        discountAmount={cart.discountAmount}
+        tax={cart.tax}
+        shipping={cart.shipping}
+        total={cart.total}
+      />
 
       {/* Global Footer */}
       <Footer />
