@@ -1,0 +1,3549 @@
+# Review package: T2-artifact
+mode: worktree against base e3f49920eb7ce6d3a1f4cfb05ed350747616100f
+artifact-hash: 8c5cd4045afb28cc9b57258f788de2d80fcf33cd
+files-changed: 12
+
+## Stat
+ src/components/viewer3d/StudioControls.tsx    | 230 +++++++++
+ src/components/viewer3d/WatchFaceRenderer.ts  | 539 ++++++++++++++++++++
+ src/components/viewer3d/WatchGeometry.ts      | 501 +++++++++++++++++++
+ src/components/viewer3d/WatchScreenTexture.ts |  55 +++
+ src/components/viewer3d/WatchViewer3D.tsx     | 416 ++++++++++++++++
+ src/components/widgets/BatteryWidget.tsx      | 140 ++++++
+ src/components/widgets/HeartRateWidget.tsx    | 174 +++++++
+ src/components/widgets/MusicWidget.tsx        | 136 ++++++
+ src/components/widgets/StepsWidget.tsx        | 137 ++++++
+ src/components/widgets/WeatherWidget.tsx      | 103 ++++
+ src/hooks/useWatchSimulator.ts                | 351 ++++++++++++++
+ tests/simulator.test.ts                       | 674 ++++++++++++++++++++++++++
+ 12 files changed, 3456 insertions(+)
+
+## Diff
+diff --git a/src/components/viewer3d/StudioControls.tsx b/src/components/viewer3d/StudioControls.tsx
+new file mode 100644
+index 0000000..0cea23a
+--- /dev/null
++++ b/src/components/viewer3d/StudioControls.tsx
+@@ -0,0 +1,230 @@
++import React from 'react';
++import type { Product, ColorOption, WatchFaceId, ActiveWidgetId } from '../../types';
++import {
++  RotateCw,
++  Eye,
++  Camera,
++  Sliders,
++  Sparkles,
++  Compass,
++  Activity,
++  Heart,
++  Footprints,
++  Sun,
++  Music,
++  Battery,
++} from 'lucide-react';
++
++export type CameraPreset = 'front' | 'perspective' | 'crown' | 'profile';
++
++export interface StudioControlsProps {
++  product?: Product;
++  colors?: ColorOption[];
++  selectedColor?: ColorOption;
++  onSelectColor?: (color: ColorOption) => void;
++
++  activeFace: WatchFaceId;
++  onSelectFace: (face: WatchFaceId) => void;
++
++  activeCameraPreset?: CameraPreset;
++  onSelectCameraPreset: (preset: CameraPreset) => void;
++
++  isAutoRotating: boolean;
++  onToggleAutoRotate: () => void;
++
++  isWidgetDrawerOpen: boolean;
++  onToggleWidgetDrawer: () => void;
++
++  activeWidget?: ActiveWidgetId | null;
++  onSelectWidget?: (widget: ActiveWidgetId) => void;
++  className?: string;
++}
++
++const WATCH_FACES: Array<{ id: WatchFaceId; label: string; tag: string }> = [
++  { id: 'minimal', label: 'Minimal', tag: 'Classic' },
++  { id: 'neon', label: 'Neon Cyber', tag: 'Glowing' },
++  { id: 'chrono', label: 'Chrono Sub', tag: 'Precision' },
++  { id: 'health', label: 'Health Rings', tag: 'Fitness' },
++];
++
++const CAMERA_PRESETS: Array<{ id: CameraPreset; label: string }> = [
++  { id: 'front', label: 'Front' },
++  { id: 'perspective', label: 'Perspective' },
++  { id: 'crown', label: 'Crown Detail' },
++  { id: 'profile', label: 'Side Profile' },
++];
++
++const WIDGET_TABS: Array<{ id: ActiveWidgetId; label: string; icon: React.ElementType }> = [
++  { id: 'heart_rate', label: 'ECG Pulse', icon: Heart },
++  { id: 'steps', label: '10k Steps', icon: Footprints },
++  { id: 'weather', label: 'Weather', icon: Sun },
++  { id: 'music', label: 'Music', icon: Music },
++  { id: 'battery', label: 'Battery', icon: Battery },
++];
++
++export const StudioControls: React.FC<StudioControlsProps> = ({
++  product,
++  colors,
++  selectedColor,
++  onSelectColor,
++  activeFace,
++  onSelectFace,
++  activeCameraPreset = 'perspective',
++  onSelectCameraPreset,
++  isAutoRotating,
++  onToggleAutoRotate,
++  isWidgetDrawerOpen,
++  onToggleWidgetDrawer,
++  activeWidget,
++  onSelectWidget,
++  className = '',
++}) => {
++  const availableColors = colors || product?.colors || [];
++
++  return (
++    <div className={`flex flex-col gap-3 ${className}`}>
++      {/* Main Studio Toolbar Card */}
++      <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl bg-white/85 backdrop-blur-md border border-purple-100 shadow-lg shadow-purple-500/5">
++        {/* Section 1: Color Swatches */}
++        {availableColors.length > 0 && onSelectColor && (
++          <div className="flex items-center gap-2 border-r border-purple-100 pr-3 mr-1">
++            <span className="text-xs font-semibold text-slate-500 hidden sm:inline">Color</span>
++            <div className="flex items-center gap-1.5">
++              {availableColors.map((c) => {
++                const isSelected = selectedColor?.id === c.id;
++                return (
++                  <button
++                    key={c.id}
++                    onClick={() => onSelectColor(c)}
++                    title={c.name}
++                    className={`relative w-7 h-7 rounded-full transition-transform active:scale-90 flex items-center justify-center ${
++                      isSelected
++                        ? 'ring-2 ring-purple-600 ring-offset-2 ring-offset-white scale-110'
++                        : 'hover:scale-105'
++                    }`}
++                    style={{ backgroundColor: c.caseHex || c.hex }}
++                  >
++                    {/* Two-tone indicator if strapHex is distinct */}
++                    {c.strapHex && c.strapHex !== (c.caseHex || c.hex) && (
++                      <span
++                        className="absolute inset-y-0 right-0 w-1/2 rounded-r-full opacity-80"
++                        style={{ backgroundColor: c.strapHex }}
++                      />
++                    )}
++                  </button>
++                );
++              })}
++            </div>
++          </div>
++        )}
++
++        {/* Section 2: Watch Face Picker */}
++        <div className="flex items-center gap-1.5 border-r border-purple-100 pr-3 mr-1">
++          <span className="text-xs font-semibold text-slate-500 hidden md:inline">Face</span>
++          <div className="flex items-center gap-1 bg-purple-50/70 p-1 rounded-xl border border-purple-100/60">
++            {WATCH_FACES.map((face) => {
++              const isActive = activeFace === face.id;
++              return (
++                <button
++                  key={face.id}
++                  onClick={() => onSelectFace(face.id)}
++                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
++                    isActive
++                      ? 'bg-purple-600 text-white shadow-sm shadow-purple-500/30'
++                      : 'text-slate-600 hover:text-purple-700 hover:bg-white/80'
++                  }`}
++                >
++                  {face.label}
++                </button>
++              );
++            })}
++          </div>
++        </div>
++
++        {/* Section 3: Camera Presets */}
++        <div className="flex items-center gap-1.5 border-r border-purple-100 pr-3 mr-1">
++          <Camera className="w-3.5 h-3.5 text-slate-400 hidden lg:inline" />
++          <div className="flex items-center gap-1">
++            {CAMERA_PRESETS.map((preset) => {
++              const isActive = activeCameraPreset === preset.id;
++              return (
++                <button
++                  key={preset.id}
++                  onClick={() => onSelectCameraPreset(preset.id)}
++                  className={`px-2 py-1 rounded-lg text-xs font-medium transition-colors ${
++                    isActive
++                      ? 'bg-slate-900 text-white'
++                      : 'text-slate-600 hover:bg-slate-100'
++                  }`}
++                >
++                  {preset.label}
++                </button>
++              );
++            })}
++          </div>
++        </div>
++
++        {/* Section 4: Auto-Rotate & Widgets Toggles */}
++        <div className="flex items-center gap-2">
++          {/* Auto-Rotate Toggle */}
++          <button
++            onClick={onToggleAutoRotate}
++            title={isAutoRotating ? 'Pause Auto-Rotation' : 'Start 360° Auto-Rotation'}
++            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
++              isAutoRotating
++                ? 'bg-cyan-500 text-white shadow-sm shadow-cyan-500/30'
++                : 'bg-purple-50 text-purple-700 hover:bg-purple-100/80 border border-purple-200/50'
++            }`}
++          >
++            <RotateCw className={`w-3.5 h-3.5 ${isAutoRotating ? 'animate-spin' : ''}`} />
++            <span className="hidden sm:inline">{isAutoRotating ? 'Spinning' : '360° Orbit'}</span>
++          </button>
++
++          {/* Widget Simulator Drawer Toggle */}
++          <button
++            onClick={onToggleWidgetDrawer}
++            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
++              isWidgetDrawerOpen
++                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-500/25'
++                : 'bg-white border border-purple-200 text-slate-700 hover:border-purple-300'
++            }`}
++          >
++            <Sliders className="w-3.5 h-3.5 text-purple-400" />
++            <span>Widgets</span>
++            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-purple-100 text-purple-800 font-bold">
++              5
++            </span>
++          </button>
++        </div>
++      </div>
++
++      {/* Sub-bar for Direct Widget Switching (when drawer is open) */}
++      {isWidgetDrawerOpen && onSelectWidget && (
++        <div className="flex items-center gap-1.5 p-2 rounded-xl bg-purple-50/70 border border-purple-100/80 backdrop-blur-md overflow-x-auto">
++          <span className="text-xs font-semibold text-slate-500 ml-1 mr-2 flex items-center gap-1">
++            <Sparkles className="w-3.5 h-3.5 text-cyan-600" />
++            Simulate:
++          </span>
++          {WIDGET_TABS.map((w) => {
++            const Icon = w.icon;
++            const isTabActive = activeWidget === w.id;
++            return (
++              <button
++                key={w.id}
++                onClick={() => onSelectWidget(w.id)}
++                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
++                  isTabActive
++                    ? 'bg-white text-purple-800 shadow-sm border border-purple-200/60'
++                    : 'text-slate-600 hover:text-purple-700 hover:bg-white/50'
++                }`}
++              >
++                <Icon className={`w-3.5 h-3.5 ${isTabActive ? 'text-purple-600' : 'text-slate-400'}`} />
++                <span>{w.label}</span>
++              </button>
++            );
++          })}
++        </div>
++      )}
++    </div>
++  );
++};
+diff --git a/src/components/viewer3d/WatchFaceRenderer.ts b/src/components/viewer3d/WatchFaceRenderer.ts
+new file mode 100644
+index 0000000..b7eb5a9
+--- /dev/null
++++ b/src/components/viewer3d/WatchFaceRenderer.ts
+@@ -0,0 +1,539 @@
++import type { WatchFaceId } from '../../types';
++import type { WatchSimulatorState } from '../../hooks/useWatchSimulator';
++import { generateECGWave } from '../../hooks/useWatchSimulator';
++
++export interface WatchFaceRenderOptions {
++  faceId: WatchFaceId;
++  time?: Date;
++  simulatorState: WatchSimulatorState;
++}
++
++export function drawMinimalFace(
++  ctx: CanvasRenderingContext2D,
++  size: number,
++  time: Date,
++  state: WatchSimulatorState
++): void {
++  const cx = size / 2;
++  const cy = size / 2;
++
++  // Background
++  ctx.fillStyle = '#080B14';
++  ctx.fillRect(0, 0, size, size);
++
++  // Subtle radial gradient center glow
++  const radial = ctx.createRadialGradient(cx, cy, 10, cx, cy, size * 0.45);
++  radial.addColorStop(0, 'rgba(124, 58, 237, 0.12)');
++  radial.addColorStop(1, 'rgba(0, 0, 0, 0)');
++  ctx.fillStyle = radial;
++  ctx.beginPath();
++  ctx.arc(cx, cy, size * 0.45, 0, Math.PI * 2);
++  ctx.fill();
++
++  // Minimal Hour Markers
++  ctx.save();
++  ctx.translate(cx, cy);
++  for (let i = 0; i < 12; i++) {
++    const angle = (i * Math.PI) / 6;
++    const isMajor = i % 3 === 0;
++    const r1 = size * 0.42;
++    const r2 = isMajor ? size * 0.38 : size * 0.40;
++
++    ctx.strokeStyle = isMajor ? 'rgba(255, 255, 255, 0.85)' : 'rgba(255, 255, 255, 0.25)';
++    ctx.lineWidth = isMajor ? 3 : 1.5;
++    ctx.beginPath();
++    ctx.moveTo(Math.sin(angle) * r1, -Math.cos(angle) * r1);
++    ctx.lineTo(Math.sin(angle) * r2, -Math.cos(angle) * r2);
++    ctx.stroke();
++  }
++  ctx.restore();
++
++  // Date Pill at top
++  const days = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
++  const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
++  const dateStr = `${days[time.getDay()]} ${time.getDate()} ${months[time.getMonth()]}`;
++
++  ctx.fillStyle = '#94A3B8';
++  ctx.font = '600 13px Inter, -apple-system, sans-serif';
++  ctx.textAlign = 'center';
++  ctx.textBaseline = 'middle';
++  ctx.fillText(dateStr, cx, cy - 80);
++
++  // Big Digital Clock
++  const hours = time.getHours().toString().padStart(2, '0');
++  const minutes = time.getMinutes().toString().padStart(2, '0');
++
++  ctx.fillStyle = '#FFFFFF';
++  ctx.font = '700 76px Inter, -apple-system, sans-serif';
++  ctx.textAlign = 'center';
++  ctx.textBaseline = 'middle';
++  ctx.fillText(`${hours}:${minutes}`, cx, cy - 10);
++
++  // Seconds display
++  const seconds = time.getSeconds().toString().padStart(2, '0');
++  ctx.fillStyle = '#06B6D4';
++  ctx.font = '600 18px Inter, -apple-system, sans-serif';
++  ctx.fillText(`${seconds}s`, cx, cy + 36);
++
++  // Bottom Status Pills (Battery & Heart Rate)
++  const pillY = cy + 90;
++
++  // Battery pill
++  ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
++  ctx.beginPath();
++  ctx.roundRect(cx - 100, pillY - 14, 90, 28, 14);
++  ctx.fill();
++
++  ctx.fillStyle = '#A78BFA';
++  ctx.font = '600 12px Inter, sans-serif';
++  ctx.textAlign = 'center';
++  ctx.fillText(`⚡ ${state.batteryLevel}%`, cx - 55, pillY);
++
++  // Steps pill
++  ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
++  ctx.beginPath();
++  ctx.roundRect(cx + 10, pillY - 14, 90, 28, 14);
++  ctx.fill();
++
++  ctx.fillStyle = '#38BDF8';
++  ctx.fillText(`👟 ${state.stepCount > 9999 ? (state.stepCount / 1000).toFixed(1) + 'k' : state.stepCount}`, cx + 55, pillY);
++}
++
++export function drawNeonFace(
++  ctx: CanvasRenderingContext2D,
++  size: number,
++  time: Date,
++  state: WatchSimulatorState
++): void {
++  const cx = size / 2;
++  const cy = size / 2;
++
++  // Dark Cyber Background
++  ctx.fillStyle = '#030712';
++  ctx.fillRect(0, 0, size, size);
++
++  // Radial Cyber Glow
++  const glow = ctx.createRadialGradient(cx, cy, 30, cx, cy, size * 0.48);
++  glow.addColorStop(0, 'rgba(124, 58, 237, 0.28)');
++  glow.addColorStop(0.6, 'rgba(6, 182, 212, 0.12)');
++  glow.addColorStop(1, 'rgba(3, 7, 18, 0)');
++  ctx.fillStyle = glow;
++  ctx.beginPath();
++  ctx.arc(cx, cy, size * 0.48, 0, Math.PI * 2);
++  ctx.fill();
++
++  // Outer Neon Track Ring
++  ctx.strokeStyle = 'rgba(124, 58, 237, 0.25)';
++  ctx.lineWidth = 4;
++  ctx.beginPath();
++  ctx.arc(cx, cy, size * 0.44, 0, Math.PI * 2);
++  ctx.stroke();
++
++  // Seconds Progress Arc
++  const secFraction = (time.getSeconds() * 1000 + time.getMilliseconds()) / 60000;
++  const secAngle = -Math.PI / 2 + secFraction * Math.PI * 2;
++  ctx.strokeStyle = '#06B6D4';
++  ctx.lineWidth = 4;
++  ctx.beginPath();
++  ctx.arc(cx, cy, size * 0.44, -Math.PI / 2, secAngle);
++  ctx.stroke();
++
++  // Neon Digital Hours & Minutes
++  const hours = time.getHours().toString().padStart(2, '0');
++  const minutes = time.getMinutes().toString().padStart(2, '0');
++
++  ctx.save();
++  ctx.shadowColor = '#06B6D4';
++  ctx.shadowBlur = 18;
++  ctx.fillStyle = '#22D3EE';
++  ctx.font = '800 84px Inter, -apple-system, sans-serif';
++  ctx.textAlign = 'right';
++  ctx.textBaseline = 'middle';
++  ctx.fillText(hours, cx - 12, cy - 25);
++  ctx.restore();
++
++  ctx.save();
++  ctx.shadowColor = '#7C3AED';
++  ctx.shadowBlur = 18;
++  ctx.fillStyle = '#C084FC';
++  ctx.font = '800 84px Inter, -apple-system, sans-serif';
++  ctx.textAlign = 'left';
++  ctx.textBaseline = 'middle';
++  ctx.fillText(minutes, cx + 12, cy - 25);
++  ctx.restore();
++
++  // Pulsing Separator Dots
++  ctx.fillStyle = '#FFFFFF';
++  ctx.beginPath();
++  ctx.arc(cx, cy - 38, 4, 0, Math.PI * 2);
++  ctx.arc(cx, cy - 12, 4, 0, Math.PI * 2);
++  ctx.fill();
++
++  // Neon Telemetry Dashboard
++  const cardY = cy + 55;
++
++  // BPM Box
++  ctx.fillStyle = 'rgba(239, 68, 68, 0.12)';
++  ctx.strokeStyle = 'rgba(239, 68, 68, 0.4)';
++  ctx.lineWidth = 1;
++  ctx.beginPath();
++  ctx.roundRect(cx - 120, cardY, 75, 48, 10);
++  ctx.fill();
++  ctx.stroke();
++
++  ctx.fillStyle = '#F87171';
++  ctx.font = '700 11px Inter, sans-serif';
++  ctx.textAlign = 'center';
++  ctx.fillText('PULSE', cx - 82, cardY + 16);
++  ctx.font = '800 16px Inter, sans-serif';
++  ctx.fillStyle = '#FFFFFF';
++  ctx.fillText(`${state.heartRate}`, cx - 82, cardY + 34);
++
++  // Steps Box
++  ctx.fillStyle = 'rgba(6, 182, 212, 0.12)';
++  ctx.strokeStyle = 'rgba(6, 182, 212, 0.4)';
++  ctx.beginPath();
++  ctx.roundRect(cx - 37, cardY, 75, 48, 10);
++  ctx.fill();
++  ctx.stroke();
++
++  ctx.fillStyle = '#22D3EE';
++  ctx.font = '700 11px Inter, sans-serif';
++  ctx.fillText('STEPS', cx, cardY + 16);
++  ctx.font = '800 15px Inter, sans-serif';
++  ctx.fillStyle = '#FFFFFF';
++  ctx.fillText(`${state.stepCount}`, cx, cardY + 34);
++
++  // Battery Box
++  ctx.fillStyle = 'rgba(124, 58, 237, 0.15)';
++  ctx.strokeStyle = 'rgba(124, 58, 237, 0.4)';
++  ctx.beginPath();
++  ctx.roundRect(cx + 45, cardY, 75, 48, 10);
++  ctx.fill();
++  ctx.stroke();
++
++  ctx.fillStyle = '#C084FC';
++  ctx.font = '700 11px Inter, sans-serif';
++  ctx.fillText('BATTERY', cx + 82, cardY + 16);
++  ctx.font = '800 16px Inter, sans-serif';
++  ctx.fillStyle = '#FFFFFF';
++  ctx.fillText(`${state.batteryLevel}%`, cx + 82, cardY + 34);
++
++  // Bottom Banner
++  ctx.fillStyle = '#94A3B8';
++  ctx.font = '600 11px Inter, sans-serif';
++  ctx.fillText(`AURA // ${state.weather.condition.toUpperCase()} ${state.currentTemperature}°`, cx, cy + 130);
++}
++
++export function drawChronoFace(
++  ctx: CanvasRenderingContext2D,
++  size: number,
++  time: Date,
++  state: WatchSimulatorState
++): void {
++  const cx = size / 2;
++  const cy = size / 2;
++
++  // Deep Navy Sunburst Dial
++  ctx.fillStyle = '#060B18';
++  ctx.fillRect(0, 0, size, size);
++
++  // Outer Bezel Tachymeter Track
++  ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
++  ctx.lineWidth = 1;
++  ctx.beginPath();
++  ctx.arc(cx, cy, size * 0.46, 0, Math.PI * 2);
++  ctx.stroke();
++
++  // Minute & Second Tick Marks
++  ctx.save();
++  ctx.translate(cx, cy);
++  for (let i = 0; i < 60; i++) {
++    const angle = (i * Math.PI) / 30;
++    const isHour = i % 5 === 0;
++    const r1 = size * 0.45;
++    const r2 = isHour ? size * 0.41 : size * 0.435;
++
++    ctx.strokeStyle = isHour ? '#E2E8F0' : 'rgba(148, 163, 184, 0.4)';
++    ctx.lineWidth = isHour ? 2.5 : 1;
++    ctx.beginPath();
++    ctx.moveTo(Math.sin(angle) * r1, -Math.cos(angle) * r1);
++    ctx.lineTo(Math.sin(angle) * r2, -Math.cos(angle) * r2);
++    ctx.stroke();
++
++    if (isHour) {
++      const num = i === 0 ? '60' : i.toString().padStart(2, '0');
++      ctx.fillStyle = '#94A3B8';
++      ctx.font = '600 10px Inter, sans-serif';
++      ctx.textAlign = 'center';
++      ctx.textBaseline = 'middle';
++      const textR = size * 0.38;
++      ctx.fillText(num, Math.sin(angle) * textR, -Math.cos(angle) * textR);
++    }
++  }
++  ctx.restore();
++
++  // 3 Sub-Dials Helper
++  const drawSubDial = (x: number, y: number, r: number, label: string, valStr: string, needleAngle: number) => {
++    // Dial base
++    ctx.fillStyle = '#0C1322';
++    ctx.beginPath();
++    ctx.arc(x, y, r, 0, Math.PI * 2);
++    ctx.fill();
++
++    ctx.strokeStyle = 'rgba(124, 58, 237, 0.3)';
++    ctx.lineWidth = 1.5;
++    ctx.stroke();
++
++    // Dial ticks
++    for (let j = 0; j < 12; j++) {
++      const a = (j * Math.PI) / 6;
++      ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
++      ctx.lineWidth = 1;
++      ctx.beginPath();
++      ctx.moveTo(x + Math.sin(a) * (r - 2), y - Math.cos(a) * (r - 2));
++      ctx.lineTo(x + Math.sin(a) * (r - 5), y - Math.cos(a) * (r - 5));
++      ctx.stroke();
++    }
++
++    // Needle
++    ctx.strokeStyle = '#06B6D4';
++    ctx.lineWidth = 2;
++    ctx.beginPath();
++    ctx.moveTo(x, y);
++    ctx.lineTo(x + Math.sin(needleAngle) * (r - 7), y - Math.cos(needleAngle) * (r - 7));
++    ctx.stroke();
++
++    // Center pin
++    ctx.fillStyle = '#CBD5E1';
++    ctx.beginPath();
++    ctx.arc(x, y, 2.5, 0, Math.PI * 2);
++    ctx.fill();
++
++    // Labels
++    ctx.fillStyle = '#94A3B8';
++    ctx.font = '600 9px Inter, sans-serif';
++    ctx.textAlign = 'center';
++    ctx.fillText(label, x, y - r - 6);
++    ctx.fillStyle = '#FFFFFF';
++    ctx.font = '700 10px Inter, sans-serif';
++    ctx.fillText(valStr, x, y + r + 11);
++  };
++
++  // Sub-Dial 1: Top (30-Minute Counter)
++  const minAngle = ((time.getMinutes() % 30) / 30) * Math.PI * 2;
++  drawSubDial(cx, cy - 70, 36, 'CHRONO', `${time.getMinutes()}M`, minAngle);
++
++  // Sub-Dial 2: Left (24-Hour Dial)
++  const hrAngle = ((time.getHours() % 24) / 24) * Math.PI * 2;
++  drawSubDial(cx - 75, cy + 10, 36, '24-HR', `${time.getHours()}H`, hrAngle);
++
++  // Sub-Dial 3: Bottom (Heart Rate / Pulse Dial)
++  const bpmAngle = ((state.heartRate - 50) / 100) * Math.PI * 2;
++  drawSubDial(cx, cy + 85, 36, 'PULSE', `${state.heartRate}`, bpmAngle);
++
++  // Date Window at 3 o'clock
++  ctx.fillStyle = '#0F172A';
++  ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
++  ctx.lineWidth = 1;
++  ctx.beginPath();
++  ctx.roundRect(cx + 50, cy - 12, 38, 24, 4);
++  ctx.fill();
++  ctx.stroke();
++
++  ctx.fillStyle = '#F8FAFC';
++  ctx.font = '700 13px Inter, sans-serif';
++  ctx.textAlign = 'center';
++  ctx.textBaseline = 'middle';
++  ctx.fillText(`${time.getDate()}`, cx + 69, cy);
++
++  // Main Analog Hands
++  const hoursVal = (time.getHours() % 12) + time.getMinutes() / 60;
++  const hourAngle = (hoursVal / 12) * Math.PI * 2;
++  const minuteAngle = ((time.getMinutes() + time.getSeconds() / 60) / 60) * Math.PI * 2;
++  const secondAngle = ((time.getSeconds() * 1000 + time.getMilliseconds()) / 60000) * Math.PI * 2;
++
++  // Hour Hand
++  ctx.save();
++  ctx.translate(cx, cy);
++  ctx.rotate(hourAngle);
++  ctx.fillStyle = '#F1F5F9';
++  ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
++  ctx.shadowBlur = 6;
++  ctx.beginPath();
++  ctx.roundRect(-4, -size * 0.22, 8, size * 0.22 + 10, 4);
++  ctx.fill();
++  ctx.restore();
++
++  // Minute Hand
++  ctx.save();
++  ctx.translate(cx, cy);
++  ctx.rotate(minuteAngle);
++  ctx.fillStyle = '#E2E8F0';
++  ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
++  ctx.shadowBlur = 6;
++  ctx.beginPath();
++  ctx.roundRect(-3, -size * 0.33, 6, size * 0.33 + 12, 3);
++  ctx.fill();
++  ctx.restore();
++
++  // Sweep Seconds Hand (Chrono Red/Cyan)
++  ctx.save();
++  ctx.translate(cx, cy);
++  ctx.rotate(secondAngle);
++  ctx.strokeStyle = '#EF4444';
++  ctx.lineWidth = 2;
++  ctx.beginPath();
++  ctx.moveTo(0, 20);
++  ctx.lineTo(0, -size * 0.39);
++  ctx.stroke();
++
++  ctx.fillStyle = '#EF4444';
++  ctx.beginPath();
++  ctx.arc(0, 0, 4.5, 0, Math.PI * 2);
++  ctx.fill();
++  ctx.restore();
++
++  // Center Pin Cap
++  ctx.fillStyle = '#FFFFFF';
++  ctx.beginPath();
++  ctx.arc(cx, cy, 2, 0, Math.PI * 2);
++  ctx.fill();
++}
++
++export function drawHealthFace(
++  ctx: CanvasRenderingContext2D,
++  size: number,
++  time: Date,
++  state: WatchSimulatorState
++): void {
++  const cx = size / 2;
++  const cy = size / 2;
++
++  // Deep Obsidian Background
++  ctx.fillStyle = '#05070E';
++  ctx.fillRect(0, 0, size, size);
++
++  // Digital Time at Top
++  const hours = time.getHours().toString().padStart(2, '0');
++  const minutes = time.getMinutes().toString().padStart(2, '0');
++
++  ctx.fillStyle = '#FFFFFF';
++  ctx.font = '700 46px Inter, -apple-system, sans-serif';
++  ctx.textAlign = 'center';
++  ctx.textBaseline = 'middle';
++  ctx.fillText(`${hours}:${minutes}`, cx, cy - 130);
++
++  // Concentric Activity Rings
++  const ringCenterY = cy - 15;
++  const ringWidth = 14;
++
++  const drawRing = (r: number, color: string, bgTrack: string, progressFraction: number) => {
++    // Background track
++    ctx.strokeStyle = bgTrack;
++    ctx.lineWidth = ringWidth;
++    ctx.beginPath();
++    ctx.arc(cx, ringCenterY, r, 0, Math.PI * 2);
++    ctx.stroke();
++
++    // Progress arc
++    if (progressFraction > 0) {
++      const safeFraction = Math.min(progressFraction, 1.0);
++      ctx.strokeStyle = color;
++      ctx.lineWidth = ringWidth;
++      ctx.lineCap = 'round';
++      ctx.beginPath();
++      ctx.arc(
++        cx,
++        ringCenterY,
++        r,
++        -Math.PI / 2,
++        -Math.PI / 2 + safeFraction * Math.PI * 2
++      );
++      ctx.stroke();
++    }
++  };
++
++  // Ring 1 (Outer): Calories Burned (Violet)
++  const calFraction = state.stepMetrics.caloriesBurned / 500;
++  drawRing(78, '#8B5CF6', 'rgba(139, 92, 246, 0.18)', calFraction);
++
++  // Ring 2 (Middle): Steps (Cyan)
++  const stepsFraction = state.stepCount / state.stepGoal;
++  drawRing(58, '#06B6D4', 'rgba(6, 182, 212, 0.18)', stepsFraction);
++
++  // Ring 3 (Inner): Active Time / Heart Rate (Emerald)
++  const activeFraction = state.heartRate / 120;
++  drawRing(38, '#10B981', 'rgba(16, 185, 129, 0.18)', activeFraction);
++
++  // Center Ring Icon
++  ctx.fillStyle = '#FFFFFF';
++  ctx.font = '700 13px Inter, sans-serif';
++  ctx.textAlign = 'center';
++  ctx.fillText('AURA', cx, ringCenterY);
++
++  // Real-time Mini Sparkline ECG
++  const sparkY = cy + 105;
++  const sparkWidth = 220;
++  const sparkHeight = 44;
++  const sparkLeft = cx - sparkWidth / 2;
++
++  ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
++  ctx.strokeStyle = 'rgba(124, 58, 237, 0.2)';
++  ctx.lineWidth = 1;
++  ctx.beginPath();
++  ctx.roundRect(sparkLeft - 10, sparkY - 14, sparkWidth + 20, sparkHeight + 20, 12);
++  ctx.fill();
++  ctx.stroke();
++
++  // ECG points
++  const points = generateECGWave(45, state.heartRate, (time.getSeconds() % 10) * 0.1);
++  ctx.strokeStyle = '#F43F5E';
++  ctx.lineWidth = 2;
++  ctx.beginPath();
++  points.forEach((val, idx) => {
++    const px = sparkLeft + (idx / (points.length - 1)) * sparkWidth;
++    const py = sparkY + sparkHeight / 2 - val * (sparkHeight / 2) * 0.8;
++    if (idx === 0) ctx.moveTo(px, py);
++    else ctx.lineTo(px, py);
++  });
++  ctx.stroke();
++
++  // Bottom Stats Row
++  ctx.fillStyle = '#F43F5E';
++  ctx.font = '700 13px Inter, sans-serif';
++  ctx.textAlign = 'center';
++  ctx.fillText(`♥ ${state.heartRate} BPM`, cx - 60, cy + 155);
++
++  ctx.fillStyle = '#06B6D4';
++  ctx.fillText(`👟 ${state.stepCount.toLocaleString()}`, cx + 55, cy + 155);
++}
++
++export function renderWatchFace(
++  canvas: HTMLCanvasElement,
++  faceId: WatchFaceId,
++  time: Date,
++  state: WatchSimulatorState
++): void {
++  const ctx = canvas.getContext('2d');
++  if (!ctx) return;
++
++  const size = canvas.width;
++
++  switch (faceId) {
++    case 'minimal':
++      drawMinimalFace(ctx, size, time, state);
++      break;
++    case 'neon':
++      drawNeonFace(ctx, size, time, state);
++      break;
++    case 'chrono':
++      drawChronoFace(ctx, size, time, state);
++      break;
++    case 'health':
++      drawHealthFace(ctx, size, time, state);
++      break;
++    default:
++      drawMinimalFace(ctx, size, time, state);
++  }
++}
+diff --git a/src/components/viewer3d/WatchGeometry.ts b/src/components/viewer3d/WatchGeometry.ts
+new file mode 100644
+index 0000000..b0c2370
+--- /dev/null
++++ b/src/components/viewer3d/WatchGeometry.ts
+@@ -0,0 +1,501 @@
++import * as THREE from 'three';
++import type { WatchModelType } from '../../types';
++
++export interface WatchMaterialOptions {
++  caseColor?: string;
++  strapColor?: string;
++  screenTexture?: THREE.Texture | null;
++}
++
++export function updateWatchMaterials(
++  group: THREE.Group,
++  options: WatchMaterialOptions
++): void {
++  const { caseColor, strapColor, screenTexture } = options;
++
++  group.traverse((child) => {
++    if (!(child instanceof THREE.Mesh)) return;
++
++    const role = child.userData?.role;
++    if (!role) return;
++
++    const material = child.material as THREE.MeshStandardMaterial;
++
++    if (role === 'case' && caseColor && material && material.color) {
++      material.color.set(caseColor);
++      material.needsUpdate = true;
++    } else if (role === 'strap' && strapColor && material && material.color) {
++      material.color.set(strapColor);
++      material.needsUpdate = true;
++    } else if (role === 'screen' && screenTexture !== undefined) {
++      if (screenTexture) {
++        material.map = screenTexture;
++        if ('emissiveMap' in material) {
++          (material as THREE.MeshStandardMaterial).emissiveMap = screenTexture;
++        }
++      }
++      material.needsUpdate = true;
++    } else if (role === 'crown' && caseColor && material && material.color) {
++      // Crown slightly accented
++      material.color.set(caseColor);
++      material.needsUpdate = true;
++    }
++  });
++}
++
++/**
++ * Creates Band Model (capsule chassis + screen + continuous wrap-around strap)
++ */
++export function createBandModel(options: WatchMaterialOptions = {}): THREE.Group {
++  const group = new THREE.Group();
++  group.name = 'BandModel';
++
++  const caseColor = options.caseColor || '#1E293B';
++  const strapColor = options.strapColor || '#0F172A';
++
++  // Materials
++  const caseMat = new THREE.MeshStandardMaterial({
++    color: new THREE.Color(caseColor),
++    roughness: 0.35,
++    metalness: 0.4,
++  });
++
++  const strapMat = new THREE.MeshStandardMaterial({
++    color: new THREE.Color(strapColor),
++    roughness: 0.75,
++    metalness: 0.05,
++  });
++
++  const screenMat = new THREE.MeshStandardMaterial({
++    map: options.screenTexture || null,
++    roughness: 0.1,
++    metalness: 0.1,
++    emissive: new THREE.Color(0xffffff),
++    emissiveMap: options.screenTexture || null,
++    emissiveIntensity: 0.9,
++  });
++
++  // 1. Capsule Chassis
++  const capsuleGeo = new THREE.CapsuleGeometry(0.55, 1.2, 16, 32);
++  const capsuleMesh = new THREE.Mesh(capsuleGeo, caseMat);
++  capsuleMesh.scale.set(0.9, 1.15, 0.45);
++  capsuleMesh.castShadow = true;
++  capsuleMesh.receiveShadow = true;
++  capsuleMesh.userData.role = 'case';
++  group.add(capsuleMesh);
++
++  // 2. Bezel Edge Ring
++  const bezelGeo = new THREE.TorusGeometry(0.56, 0.035, 16, 48);
++  const bezelMesh = new THREE.Mesh(bezelGeo, caseMat.clone());
++  bezelMesh.scale.set(0.88, 1.45, 1);
++  bezelMesh.position.z = 0.18;
++  bezelMesh.userData.role = 'case';
++  group.add(bezelMesh);
++
++  // 3. Screen Face
++  // Capsule screen slightly curved and mapped to 512x512 CanvasTexture
++  const screenGeo = new THREE.PlaneGeometry(0.88, 1.62, 16, 16);
++  // Curve screen slightly along X to match capsule curvature
++  const pos = screenGeo.attributes.position;
++  for (let i = 0; i < pos.count; i++) {
++    const x = pos.getX(i);
++    const zOffset = -Math.pow(x / 0.44, 2) * 0.04;
++    pos.setZ(i, zOffset);
++  }
++  screenGeo.computeVertexNormals();
++
++  const screenMesh = new THREE.Mesh(screenGeo, screenMat);
++  screenMesh.position.z = 0.225;
++  screenMesh.userData.role = 'screen';
++  group.add(screenMesh);
++
++  // 4. Continuous Wrap-Around Strap
++  // Generates smooth continuous loop curving backwards around wrist
++  const strapCurvePoints = [
++    new THREE.Vector3(0, 0.8, -0.05),
++    new THREE.Vector3(0, 1.4, -0.4),
++    new THREE.Vector3(0, 1.6, -1.1),
++    new THREE.Vector3(0, 1.2, -1.8),
++    new THREE.Vector3(0, 0, -2.1),
++    new THREE.Vector3(0, -1.2, -1.8),
++    new THREE.Vector3(0, -1.6, -1.1),
++    new THREE.Vector3(0, -1.4, -0.4),
++    new THREE.Vector3(0, -0.8, -0.05),
++  ];
++  const strapCurve = new THREE.CatmullRomCurve3(strapCurvePoints);
++  const strapTubeGeo = new THREE.TubeGeometry(strapCurve, 64, 0.38, 16, false);
++  // Flatten tube along X and Z for a realistic strap cross-section
++  const strapMesh = new THREE.Mesh(strapTubeGeo, strapMat);
++  strapMesh.scale.set(1.9, 1.0, 0.42);
++  strapMesh.castShadow = true;
++  strapMesh.receiveShadow = true;
++  strapMesh.userData.role = 'strap';
++  group.add(strapMesh);
++
++  // Strap buckle / pin loop detail at back
++  const buckleGeo = new THREE.BoxGeometry(0.85, 0.22, 0.24);
++  const buckleMesh = new THREE.Mesh(buckleGeo, caseMat.clone());
++  buckleMesh.position.set(0, 0, -2.12);
++  buckleMesh.userData.role = 'case';
++  group.add(buckleMesh);
++
++  return group;
++}
++
++/**
++ * Creates Smart Watch Round Model (casing, bezel, crown knob, side button, lugs, straps)
++ */
++export function createWatchRoundModel(options: WatchMaterialOptions = {}): THREE.Group {
++  const group = new THREE.Group();
++  group.name = 'WatchRoundModel';
++
++  const caseColor = options.caseColor || '#CBD5E1';
++  const strapColor = options.strapColor || '#94A3B8';
++
++  // Materials
++  const caseMat = new THREE.MeshStandardMaterial({
++    color: new THREE.Color(caseColor),
++    roughness: 0.2,
++    metalness: 0.88,
++  });
++
++  const bezelMat = new THREE.MeshStandardMaterial({
++    color: new THREE.Color(caseColor).offsetHSL(0, 0, -0.04),
++    roughness: 0.15,
++    metalness: 0.92,
++  });
++
++  const strapMat = new THREE.MeshStandardMaterial({
++    color: new THREE.Color(strapColor),
++    roughness: 0.68,
++    metalness: 0.1,
++  });
++
++  const screenMat = new THREE.MeshStandardMaterial({
++    map: options.screenTexture || null,
++    roughness: 0.08,
++    metalness: 0.1,
++    emissive: new THREE.Color(0xffffff),
++    emissiveMap: options.screenTexture || null,
++    emissiveIntensity: 0.92,
++  });
++
++  // 1. Outer Casing Cylinder
++  const caseGeo = new THREE.CylinderGeometry(1.28, 1.25, 0.38, 64);
++  const caseMesh = new THREE.Mesh(caseGeo, caseMat);
++  caseMesh.rotation.x = Math.PI / 2;
++  caseMesh.castShadow = true;
++  caseMesh.receiveShadow = true;
++  caseMesh.userData.role = 'case';
++  group.add(caseMesh);
++
++  // 2. Bezel Ring Chamfer
++  const bezelGeo = new THREE.TorusGeometry(1.25, 0.075, 16, 64);
++  const bezelMesh = new THREE.Mesh(bezelGeo, bezelMat);
++  bezelMesh.position.z = 0.18;
++  bezelMesh.userData.role = 'case';
++  group.add(bezelMesh);
++
++  // 3. Circular Screen Face
++  const screenGeo = new THREE.CircleGeometry(1.17, 64);
++  const screenMesh = new THREE.Mesh(screenGeo, screenMat);
++  screenMesh.position.z = 0.201;
++  screenMesh.userData.role = 'screen';
++  group.add(screenMesh);
++
++  // 4. Digital Crown Knob at 3 o'clock
++  const crownGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.22, 32);
++  const crownMesh = new THREE.Mesh(crownGeo, bezelMat.clone());
++  crownMesh.rotation.z = Math.PI / 2;
++  crownMesh.position.set(1.36, 0.18, 0);
++  crownMesh.castShadow = true;
++  crownMesh.userData.role = 'crown';
++  group.add(crownMesh);
++
++  // Crown accent ring
++  const crownRingGeo = new THREE.TorusGeometry(0.182, 0.02, 16, 32);
++  const crownRingMesh = new THREE.Mesh(crownRingGeo, strapMat.clone());
++  crownRingMesh.rotation.y = Math.PI / 2;
++  crownRingMesh.position.set(1.42, 0.18, 0);
++  crownRingMesh.userData.role = 'strap';
++  group.add(crownRingMesh);
++
++  // 5. Tactile Side Pusher Button at 4 o'clock
++  const buttonGeo = new THREE.BoxGeometry(0.12, 0.28, 0.16);
++  const buttonMesh = new THREE.Mesh(buttonGeo, caseMat.clone());
++  buttonMesh.position.set(1.3, -0.42, 0);
++  buttonMesh.userData.role = 'case';
++  group.add(buttonMesh);
++
++  // 6. Lugs (Top and Bottom dual brackets)
++  const lugGeo = new THREE.BoxGeometry(0.18, 0.44, 0.32);
++  const lugPositions = [
++    [-0.64, 1.34, -0.04],
++    [0.64, 1.34, -0.04],
++    [-0.64, -1.34, -0.04],
++    [0.64, -1.34, -0.04],
++  ];
++  lugPositions.forEach(([x, y, z]) => {
++    const lug = new THREE.Mesh(lugGeo, caseMat.clone());
++    lug.position.set(x, y, z);
++    lug.userData.role = 'case';
++    group.add(lug);
++  });
++
++  // 7. Top & Bottom Straps
++  // Top strap curving backward
++  const topStrapPoints = [
++    new THREE.Vector3(0, 1.25, 0),
++    new THREE.Vector3(0, 1.85, -0.2),
++    new THREE.Vector3(0, 2.35, -0.75),
++    new THREE.Vector3(0, 2.2, -1.45),
++  ];
++  const topCurve = new THREE.CatmullRomCurve3(topStrapPoints);
++  const topStrapGeo = new THREE.TubeGeometry(topCurve, 32, 0.52, 16, false);
++  const topStrapMesh = new THREE.Mesh(topStrapGeo, strapMat);
++  topStrapMesh.scale.set(1.85, 1, 0.22);
++  topStrapMesh.castShadow = true;
++  topStrapMesh.userData.role = 'strap';
++  group.add(topStrapMesh);
++
++  // Bottom strap curving backward
++  const bottomStrapPoints = [
++    new THREE.Vector3(0, -1.25, 0),
++    new THREE.Vector3(0, -1.85, -0.2),
++    new THREE.Vector3(0, -2.35, -0.75),
++    new THREE.Vector3(0, -2.2, -1.45),
++  ];
++  const bottomCurve = new THREE.CatmullRomCurve3(bottomStrapPoints);
++  const bottomStrapGeo = new THREE.TubeGeometry(bottomCurve, 32, 0.52, 16, false);
++  const bottomStrapMesh = new THREE.Mesh(bottomStrapGeo, strapMat);
++  bottomStrapMesh.scale.set(1.85, 1, 0.22);
++  bottomStrapMesh.castShadow = true;
++  bottomStrapMesh.userData.role = 'strap';
++  group.add(bottomStrapMesh);
++
++  return group;
++}
++
++/**
++ * Creates Smart Watch Squircle Model (Grade 5 Titanium squircle casing, bezel rim, crown guard, straps)
++ */
++export function createWatchSquircleModel(options: WatchMaterialOptions = {}): THREE.Group {
++  const group = new THREE.Group();
++  group.name = 'WatchSquircleModel';
++
++  const caseColor = options.caseColor || '#94A3B8';
++  const strapColor = options.strapColor || '#0891B2';
++
++  // Materials
++  const caseMat = new THREE.MeshStandardMaterial({
++    color: new THREE.Color(caseColor),
++    roughness: 0.32,
++    metalness: 0.82,
++  });
++
++  const rimMat = new THREE.MeshStandardMaterial({
++    color: new THREE.Color(caseColor).offsetHSL(0, 0, 0.06),
++    roughness: 0.25,
++    metalness: 0.88,
++  });
++
++  const strapMat = new THREE.MeshStandardMaterial({
++    color: new THREE.Color(strapColor),
++    roughness: 0.72,
++    metalness: 0.08,
++  });
++
++  const screenMat = new THREE.MeshStandardMaterial({
++    map: options.screenTexture || null,
++    roughness: 0.08,
++    metalness: 0.1,
++    emissive: new THREE.Color(0xffffff),
++    emissiveMap: options.screenTexture || null,
++    emissiveIntensity: 0.95,
++  });
++
++  // 1. Squircle Shape & Extrusion
++  const width = 2.2;
++  const height = 2.45;
++  const radius = 0.55;
++
++  const shape = new THREE.Shape();
++  const x = -width / 2;
++  const y = -height / 2;
++  shape.moveTo(x + radius, y);
++  shape.lineTo(x + width - radius, y);
++  shape.quadraticCurveTo(x + width, y, x + width, y + radius);
++  shape.lineTo(x + width, y + height - radius);
++  shape.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
++  shape.lineTo(x + radius, y + height);
++  shape.quadraticCurveTo(x, y + height, x, y + height - radius);
++  shape.lineTo(x, y + radius);
++  shape.quadraticCurveTo(x, y, x + radius, y);
++
++  const extrudeSettings: THREE.ExtrudeGeometryOptions = {
++    depth: 0.44,
++    bevelEnabled: true,
++    bevelSegments: 4,
++    steps: 1,
++    bevelSize: 0.08,
++    bevelThickness: 0.08,
++  };
++
++  const caseGeo = new THREE.ExtrudeGeometry(shape, extrudeSettings);
++  caseGeo.center();
++  const caseMesh = new THREE.Mesh(caseGeo, caseMat);
++  caseMesh.castShadow = true;
++  caseMesh.receiveShadow = true;
++  caseMesh.userData.role = 'case';
++  group.add(caseMesh);
++
++  // 2. Protective Raised Bezel Lip
++  const lipShape = new THREE.Shape();
++  const lw = width - 0.12;
++  const lh = height - 0.12;
++  const lr = radius - 0.06;
++  const lx = -lw / 2;
++  const ly = -lh / 2;
++  lipShape.moveTo(lx + lr, ly);
++  lipShape.lineTo(lx + lw - lr, ly);
++  lipShape.quadraticCurveTo(lx + lw, ly, lx + lw, ly + lr);
++  lipShape.lineTo(lx + lw, ly + lh - lr);
++  lipShape.quadraticCurveTo(lx + lw, ly + lh, lx + lw - lr, ly + lh);
++  lipShape.lineTo(lx + lr, ly + lh);
++  lipShape.quadraticCurveTo(lx, ly + lh, lx, ly + lh - lr);
++  lipShape.lineTo(lx, ly + lr);
++  lipShape.quadraticCurveTo(lx, ly, lx + lr, ly);
++
++  // Screen cutout inner hole
++  const hole = new THREE.Path();
++  const sw = lw - 0.18;
++  const sh = lh - 0.18;
++  const sr = lr - 0.08;
++  const sx = -sw / 2;
++  const sy = -sh / 2;
++  hole.moveTo(sx + sr, sy);
++  hole.lineTo(sx + sw - sr, sy);
++  hole.quadraticCurveTo(sx + sw, sy, sx + sw, sy + sr);
++  hole.lineTo(sx + sw, sy + sh - sr);
++  hole.quadraticCurveTo(sx + sw, sy + sh, sx + sw - sr, sy + sh);
++  hole.lineTo(sx + sr, sy + sh);
++  hole.quadraticCurveTo(sx, sy + sh, sx, sy + sh - sr);
++  hole.lineTo(sx, sy + sr);
++  hole.quadraticCurveTo(sx, sy, sx + sr, sy);
++  lipShape.holes.push(hole);
++
++  const lipGeo = new THREE.ExtrudeGeometry(lipShape, {
++    depth: 0.06,
++    bevelEnabled: false,
++  });
++  lipGeo.center();
++  const lipMesh = new THREE.Mesh(lipGeo, rimMat);
++  lipMesh.position.z = 0.28;
++  lipMesh.userData.role = 'case';
++  group.add(lipMesh);
++
++  // 3. Screen Face (Squircle plane with UV mapping)
++  const screenShape = new THREE.Shape();
++  screenShape.moveTo(sx + sr, sy);
++  screenShape.lineTo(sx + sw - sr, sy);
++  screenShape.quadraticCurveTo(sx + sw, sy, sx + sw, sy + sr);
++  screenShape.lineTo(sx + sw, sy + sh - sr);
++  screenShape.quadraticCurveTo(sx + sw, sy + sh, sx + sw - sr, sy + sh);
++  screenShape.lineTo(sx + sr, sy + sh);
++  screenShape.quadraticCurveTo(sx, sy + sh, sx, sy + sh - sr);
++  screenShape.lineTo(sx, sy + sr);
++  screenShape.quadraticCurveTo(sx, sy, sx + sr, sy);
++
++  const screenGeo = new THREE.ShapeGeometry(screenShape);
++  // Remap UV coordinates cleanly from [0, 1]
++  const screenPos = screenGeo.attributes.position;
++  const uvs = new Float32Array(screenPos.count * 2);
++  for (let i = 0; i < screenPos.count; i++) {
++    const px = screenPos.getX(i);
++    const py = screenPos.getY(i);
++    uvs[i * 2] = (px - sx) / sw;
++    uvs[i * 2 + 1] = (py - sy) / sh;
++  }
++  screenGeo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
++
++  const screenMesh = new THREE.Mesh(screenGeo, screenMat);
++  screenMesh.position.z = 0.27;
++  screenMesh.userData.role = 'screen';
++  group.add(screenMesh);
++
++  // 4. Digital Crown + Crown Guard at Right Side
++  const guardGeo = new THREE.BoxGeometry(0.24, 0.95, 0.38);
++  const guardMesh = new THREE.Mesh(guardGeo, caseMat.clone());
++  guardMesh.position.set(1.24, 0.22, 0);
++  guardMesh.userData.role = 'case';
++  group.add(guardMesh);
++
++  const crownGeo = new THREE.CylinderGeometry(0.22, 0.22, 0.24, 32);
++  const crownMesh = new THREE.Mesh(crownGeo, rimMat.clone());
++  crownMesh.rotation.z = Math.PI / 2;
++  crownMesh.position.set(1.36, 0.32, 0);
++  crownMesh.castShadow = true;
++  crownMesh.userData.role = 'crown';
++  group.add(crownMesh);
++
++  // Orange Action Button on Left Side
++  const actionButtonGeo = new THREE.BoxGeometry(0.12, 0.6, 0.22);
++  const actionButtonMat = new THREE.MeshStandardMaterial({
++    color: new THREE.Color('#F97316'), // Bright Tactical Orange
++    roughness: 0.3,
++    metalness: 0.5,
++  });
++  const actionButtonMesh = new THREE.Mesh(actionButtonGeo, actionButtonMat);
++  actionButtonMesh.position.set(-1.24, 0.1, 0);
++  group.add(actionButtonMesh);
++
++  // 5. Alpine / Trail Loop Straps
++  const topStrapPoints = [
++    new THREE.Vector3(0, 1.35, -0.05),
++    new THREE.Vector3(0, 1.95, -0.25),
++    new THREE.Vector3(0, 2.45, -0.85),
++    new THREE.Vector3(0, 2.25, -1.5),
++  ];
++  const topCurve = new THREE.CatmullRomCurve3(topStrapPoints);
++  const topStrapGeo = new THREE.TubeGeometry(topCurve, 32, 0.56, 16, false);
++  const topStrapMesh = new THREE.Mesh(topStrapGeo, strapMat);
++  topStrapMesh.scale.set(1.95, 1, 0.26);
++  topStrapMesh.castShadow = true;
++  topStrapMesh.userData.role = 'strap';
++  group.add(topStrapMesh);
++
++  const bottomStrapPoints = [
++    new THREE.Vector3(0, -1.35, -0.05),
++    new THREE.Vector3(0, -1.95, -0.25),
++    new THREE.Vector3(0, -2.45, -0.85),
++    new THREE.Vector3(0, -2.25, -1.5),
++  ];
++  const bottomCurve = new THREE.CatmullRomCurve3(bottomStrapPoints);
++  const bottomStrapGeo = new THREE.TubeGeometry(bottomCurve, 32, 0.56, 16, false);
++  const bottomStrapMesh = new THREE.Mesh(bottomStrapGeo, strapMat);
++  bottomStrapMesh.scale.set(1.95, 1, 0.26);
++  bottomStrapMesh.castShadow = true;
++  bottomStrapMesh.userData.role = 'strap';
++  group.add(bottomStrapMesh);
++
++  return group;
++}
++
++/**
++ * Main factory function to create procedural model according to modelType
++ */
++export function createWatchModel(
++  modelType: WatchModelType,
++  options: WatchMaterialOptions = {}
++): THREE.Group {
++  switch (modelType) {
++    case 'band_capsule':
++      return createBandModel(options);
++    case 'watch_round':
++      return createWatchRoundModel(options);
++    case 'watch_squircle':
++      return createWatchSquircleModel(options);
++    default:
++      return createWatchRoundModel(options);
++  }
++}
+diff --git a/src/components/viewer3d/WatchScreenTexture.ts b/src/components/viewer3d/WatchScreenTexture.ts
+new file mode 100644
+index 0000000..55f413a
+--- /dev/null
++++ b/src/components/viewer3d/WatchScreenTexture.ts
+@@ -0,0 +1,55 @@
++import * as THREE from 'three';
++import type { WatchFaceId } from '../../types';
++import type { WatchSimulatorState } from '../../hooks/useWatchSimulator';
++import { renderWatchFace } from './WatchFaceRenderer';
++
++export class WatchScreenManager {
++  public canvas: HTMLCanvasElement;
++  public texture: THREE.CanvasTexture;
++  private isDestroyed = false;
++
++  constructor(resolution = 512) {
++    if (typeof document !== 'undefined') {
++      this.canvas = document.createElement('canvas');
++      this.canvas.width = resolution;
++      this.canvas.height = resolution;
++    } else {
++      // Fallback for SSR or non-DOM test environments
++      this.canvas = {
++        width: resolution,
++        height: resolution,
++        getContext: () => null,
++      } as unknown as HTMLCanvasElement;
++    }
++
++    this.texture = new THREE.CanvasTexture(this.canvas);
++    this.texture.generateMipmaps = true;
++    this.texture.minFilter = THREE.LinearMipmapLinearFilter;
++    this.texture.magFilter = THREE.LinearFilter;
++    if ('colorSpace' in this.texture && (THREE as unknown as { SRGBColorSpace?: string }).SRGBColorSpace) {
++      this.texture.colorSpace = (THREE as unknown as { SRGBColorSpace: string }).SRGBColorSpace;
++    }
++  }
++
++  public update(
++    faceId: WatchFaceId,
++    simulatorState: WatchSimulatorState,
++    time = new Date()
++  ): void {
++    if (this.isDestroyed || !this.canvas) return;
++
++    renderWatchFace(this.canvas, faceId, time, simulatorState);
++    this.texture.needsUpdate = true;
++  }
++
++  public dispose(): void {
++    this.isDestroyed = true;
++    if (this.texture) {
++      this.texture.dispose();
++    }
++  }
++}
++
++export function createWatchScreenManager(resolution = 512): WatchScreenManager {
++  return new WatchScreenManager(resolution);
++}
+diff --git a/src/components/viewer3d/WatchViewer3D.tsx b/src/components/viewer3d/WatchViewer3D.tsx
+new file mode 100644
+index 0000000..3446532
+--- /dev/null
++++ b/src/components/viewer3d/WatchViewer3D.tsx
+@@ -0,0 +1,416 @@
++import React, { useEffect, useRef, useState, useCallback } from 'react';
++import * as THREE from 'three';
++import type { Product, ColorOption, WatchFaceId, ActiveWidgetId, WatchModelType } from '../../types';
++import { useWatchSimulator } from '../../hooks/useWatchSimulator';
++import { createWatchModel, updateWatchMaterials } from './WatchGeometry';
++import { createWatchScreenManager, WatchScreenManager } from './WatchScreenTexture';
++import { StudioControls, CameraPreset } from './StudioControls';
++import { HeartRateWidget } from '../widgets/HeartRateWidget';
++import { StepsWidget } from '../widgets/StepsWidget';
++import { WeatherWidget } from '../widgets/WeatherWidget';
++import { MusicWidget } from '../widgets/MusicWidget';
++import { BatteryWidget } from '../widgets/BatteryWidget';
++
++export interface WatchViewer3DProps {
++  product?: Product;
++  modelType?: WatchModelType;
++  initialColor?: ColorOption;
++  initialFace?: WatchFaceId;
++  autoRotate?: boolean;
++  showControls?: boolean;
++  className?: string;
++  heightClass?: string;
++}
++
++export const WatchViewer3D: React.FC<WatchViewer3DProps> = ({
++  product,
++  modelType: propModelType,
++  initialColor,
++  initialFace,
++  autoRotate: propAutoRotate = true,
++  showControls = true,
++  className = '',
++  heightClass = 'h-[540px]',
++}) => {
++  const containerRef = useRef<HTMLDivElement | null>(null);
++
++  // Determine active model type & initial colors
++  const activeModelType: WatchModelType =
++    propModelType || product?.modelType || 'watch_round';
++
++  const defaultColor: ColorOption =
++    initialColor ||
++    product?.colors[0] || {
++      id: 'default',
++      name: 'Titanium Slate',
++      hex: '#CBD5E1',
++      caseHex: '#94A3B8',
++      strapHex: '#64748B',
++    };
++
++  const [selectedColor, setSelectedColor] = useState<ColorOption>(defaultColor);
++  const [cameraPreset, setCameraPreset] = useState<CameraPreset>('perspective');
++  const [isAutoRotating, setIsAutoRotating] = useState<boolean>(propAutoRotate);
++  const [isWidgetDrawerOpen, setIsWidgetDrawerOpen] = useState<boolean>(false);
++  const [webGlAvailable, setWebGlAvailable] = useState<boolean>(true);
++
++  // Watch Simulator State Hook
++  const simulator = useWatchSimulator(initialFace || product?.defaultFace || 'minimal');
++  const { activeFace, setActiveFace, activeWidget, setActiveWidget } = simulator;
++
++  // Sync color when product changes
++  useEffect(() => {
++    if (product?.colors?.[0]) {
++      setSelectedColor(product.colors[0]);
++    }
++  }, [product]);
++
++  // Three.js References
++  const sceneRef = useRef<THREE.Scene | null>(null);
++  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
++  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
++  const pivotRef = useRef<THREE.Group | null>(null);
++  const modelGroupRef = useRef<THREE.Group | null>(null);
++  const screenManagerRef = useRef<WatchScreenManager | null>(null);
++
++  // Rotation & Drag Interaction state
++  const isDraggingRef = useRef<boolean>(false);
++  const lastMousePosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
++  const rotTargetRef = useRef<{ x: number; y: number }>({ x: 0.25, y: -0.55 });
++  const rotCurrentRef = useRef<{ x: number; y: number }>({ x: 0.25, y: -0.55 });
++  const cameraDistanceRef = useRef<number>(4.4);
++  const targetDistanceRef = useRef<number>(4.4);
++
++  // Initialize Three.js Scene
++  useEffect(() => {
++    const container = containerRef.current;
++    if (!container) return;
++
++    let animId: number;
++
++    try {
++      const width = container.clientWidth || 600;
++      const height = container.clientHeight || 540;
++
++      // 1. Scene
++      const scene = new THREE.Scene();
++      sceneRef.current = scene;
++
++      // 2. Camera
++      const camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 50);
++      camera.position.set(0, 0, cameraDistanceRef.current);
++      cameraRef.current = camera;
++
++      // 3. WebGL Renderer
++      const renderer = new THREE.WebGLRenderer({
++        antialias: true,
++        alpha: true,
++        powerPreference: 'high-performance',
++      });
++      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
++      renderer.setSize(width, height);
++      renderer.shadowMap.enabled = true;
++      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
++      renderer.toneMapping = THREE.ACESFilmicToneMapping;
++      renderer.toneMappingExposure = 1.15;
++      container.appendChild(renderer.domElement);
++      rendererRef.current = renderer;
++
++      // 4. Lighting Setup
++      // Subtle lilac-tinted fill light (#F5F3FF, 0.8 intensity)
++      const ambientLight = new THREE.AmbientLight('#F5F3FF', 0.85);
++      scene.add(ambientLight);
++
++      // Sharp key directional light (#FFFFFF, 1.3 intensity)
++      const keyLight = new THREE.DirectionalLight('#FFFFFF', 1.3);
++      keyLight.position.set(4, 7, 5);
++      keyLight.castShadow = true;
++      keyLight.shadow.mapSize.width = 1024;
++      keyLight.shadow.mapSize.height = 1024;
++      scene.add(keyLight);
++
++      // Cool cyan rim directional light (#06B6D4, 0.7 intensity)
++      const rimLight = new THREE.DirectionalLight('#06B6D4', 0.7);
++      rimLight.position.set(-5, 3, -4);
++      scene.add(rimLight);
++
++      // Soft bottom bounce light
++      const bounceLight = new THREE.DirectionalLight('#E0F7FA', 0.4);
++      bounceLight.position.set(0, -6, 2);
++      scene.add(bounceLight);
++
++      // 5. Pivot & Model Creation
++      const pivot = new THREE.Group();
++      scene.add(pivot);
++      pivotRef.current = pivot;
++
++      // Screen Texture Manager
++      const screenManager = createWatchScreenManager(512);
++      screenManagerRef.current = screenManager;
++      screenManager.update(activeFace, simulator);
++
++      const model = createWatchModel(activeModelType, {
++        caseColor: selectedColor.caseHex || selectedColor.hex,
++        strapColor: selectedColor.strapHex || selectedColor.hex,
++        screenTexture: screenManager.texture,
++      });
++      pivot.add(model);
++      modelGroupRef.current = model;
++
++      // 6. Animation Render Loop
++      let lastScreenUpdate = 0;
++
++      const animate = (timestamp: number) => {
++        // Auto-rotation when enabled and user not interacting
++        if (isAutoRotating && !isDraggingRef.current) {
++          rotTargetRef.current.y += 0.005;
++        }
++
++        // Smooth Damped Rotation
++        rotCurrentRef.current.x += (rotTargetRef.current.x - rotCurrentRef.current.x) * 0.09;
++        rotCurrentRef.current.y += (rotTargetRef.current.y - rotCurrentRef.current.y) * 0.09;
++        pivot.rotation.x = rotCurrentRef.current.x;
++        pivot.rotation.y = rotCurrentRef.current.y;
++
++        // Smooth Camera Zoom
++        cameraDistanceRef.current += (targetDistanceRef.current - cameraDistanceRef.current) * 0.1;
++        camera.position.z = cameraDistanceRef.current;
++
++        // Periodic Dynamic Canvas Texture Updates (approx 15-20 fps is ideal for watch face hands & seconds)
++        if (timestamp - lastScreenUpdate > 50) {
++          screenManager.update(activeFace, simulator, new Date());
++          lastScreenUpdate = timestamp;
++        }
++
++        renderer.render(scene, camera);
++        animId = requestAnimationFrame(animate);
++      };
++
++      animId = requestAnimationFrame(animate);
++
++      // 7. Responsive Resize Observer
++      const handleResize = () => {
++        if (!container || !renderer || !camera) return;
++        const w = container.clientWidth;
++        const h = container.clientHeight;
++        if (w > 0 && h > 0) {
++          camera.aspect = w / h;
++          camera.updateProjectionMatrix();
++          renderer.setSize(w, h);
++        }
++      };
++
++      const resizeObserver = new ResizeObserver(handleResize);
++      resizeObserver.observe(container);
++
++      // Cleanup on unmount
++      return () => {
++        cancelAnimationFrame(animId);
++        resizeObserver.disconnect();
++        screenManager.dispose();
++        if (renderer.domElement && container.contains(renderer.domElement)) {
++          container.removeChild(renderer.domElement);
++        }
++        renderer.dispose();
++      };
++    } catch (err) {
++      console.warn('WebGL initialization error (headless/unsupported environment):', err);
++      setWebGlAvailable(false);
++    }
++  }, [activeModelType]);
++
++  // Real-time material updates on color change
++  useEffect(() => {
++    if (modelGroupRef.current) {
++      updateWatchMaterials(modelGroupRef.current, {
++        caseColor: selectedColor.caseHex || selectedColor.hex,
++        strapColor: selectedColor.strapHex || selectedColor.hex,
++        screenTexture: screenManagerRef.current?.texture,
++      });
++    }
++  }, [selectedColor]);
++
++  // Real-time screen update on face or simulator state change
++  useEffect(() => {
++    if (screenManagerRef.current) {
++      screenManagerRef.current.update(activeFace, simulator);
++    }
++  }, [activeFace, simulator]);
++
++  // Pointer drag event handlers for smooth 360-degree rotation
++  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
++    isDraggingRef.current = true;
++    lastMousePosRef.current = { x: e.clientX, y: e.clientY };
++    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
++  };
++
++  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
++    if (!isDraggingRef.current) return;
++    const dx = e.clientX - lastMousePosRef.current.x;
++    const dy = e.clientY - lastMousePosRef.current.y;
++
++    rotTargetRef.current.y += dx * 0.009;
++    rotTargetRef.current.x += dy * 0.009;
++
++    // Clamp pitch angle to prevent flipping
++    const maxPitch = Math.PI / 2.3;
++    rotTargetRef.current.x = Math.max(-maxPitch, Math.min(maxPitch, rotTargetRef.current.x));
++
++    lastMousePosRef.current = { x: e.clientX, y: e.clientY };
++  };
++
++  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
++    isDraggingRef.current = false;
++    try {
++      (e.target as HTMLElement).releasePointerCapture?.(e.pointerId);
++    } catch {
++      // Ignored if pointer capture already ended
++    }
++  };
++
++  // Wheel zoom handler
++  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
++    e.preventDefault();
++    targetDistanceRef.current = Math.max(
++      2.8,
++      Math.min(6.5, targetDistanceRef.current + e.deltaY * 0.003)
++    );
++  };
++
++  // Camera Presets handler
++  const applyCameraPreset = useCallback((preset: CameraPreset) => {
++    setCameraPreset(preset);
++    switch (preset) {
++      case 'front':
++        rotTargetRef.current = { x: 0, y: 0 };
++        targetDistanceRef.current = 4.2;
++        break;
++      case 'perspective':
++        rotTargetRef.current = { x: 0.25, y: -0.55 };
++        targetDistanceRef.current = 4.5;
++        break;
++      case 'crown':
++        rotTargetRef.current = { x: 0.05, y: -Math.PI / 2 + 0.15 };
++        targetDistanceRef.current = 3.8;
++        break;
++      case 'profile':
++        rotTargetRef.current = { x: 0, y: Math.PI / 2 };
++        targetDistanceRef.current = 4.0;
++        break;
++    }
++  }, []);
++
++  return (
++    <div className={`relative flex flex-col w-full ${className}`}>
++      {/* 3D Canvas Stage Container */}
++      <div
++        ref={containerRef}
++        onPointerDown={handlePointerDown}
++        onPointerMove={handlePointerMove}
++        onPointerUp={handlePointerUp}
++        onPointerCancel={handlePointerUp}
++        onWheel={handleWheel}
++        className={`relative w-full ${heightClass} rounded-3xl bg-gradient-to-b from-[#F8F6FF] via-[#F1EFFF]/80 to-[#E0F7FA]/30 overflow-hidden cursor-grab active:cursor-grabbing select-none border border-purple-100 shadow-inner`}
++      >
++        {/* Subtle Backdrop Radial Spotlight */}
++        <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
++          <div className="w-[380px] h-[380px] rounded-full bg-gradient-to-tr from-purple-200/20 via-cyan-100/30 to-transparent blur-3xl" />
++        </div>
++
++        {/* 360 Degree Drag Hint Overlay */}
++        <div className="absolute top-4 left-4 pointer-events-none flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/70 backdrop-blur-sm border border-purple-100/60 text-xs font-semibold text-slate-600 shadow-sm">
++          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
++          <span>Drag to orbit 360° • Scroll to zoom</span>
++        </div>
++
++        {/* Selected Finish Tag */}
++        <div className="absolute top-4 right-4 pointer-events-none flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/70 backdrop-blur-sm border border-purple-100/60 text-xs font-semibold text-slate-700 shadow-sm">
++          <span
++            className="w-2.5 h-2.5 rounded-full ring-1 ring-purple-300"
++            style={{ backgroundColor: selectedColor.caseHex || selectedColor.hex }}
++          />
++          <span>{selectedColor.name}</span>
++        </div>
++
++        {/* Fallback if WebGL unsupported in headless mode */}
++        {!webGlAvailable && (
++          <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-white/90 backdrop-blur-md">
++            <h4 className="text-base font-bold text-slate-900 mb-1">
++              3D Three.js Studio Simulation Active
++            </h4>
++            <p className="text-xs text-slate-600 max-w-sm">
++              Procedural mesh geometries initialized for {activeModelType}. Use the studio controls below to customize watch face, widgets, and materials.
++            </p>
++          </div>
++        )}
++
++        {/* Interactive Simulated Widget Floating Drawer (on right/bottom) */}
++        {isWidgetDrawerOpen && (
++          <div className="absolute right-4 bottom-4 top-16 w-80 max-w-[90%] z-20 overflow-y-auto animate-in fade-in slide-in-from-right-4 duration-300">
++            {activeWidget === 'heart_rate' && (
++              <HeartRateWidget
++                simulator={simulator}
++                onClose={() => setIsWidgetDrawerOpen(false)}
++              />
++            )}
++            {activeWidget === 'steps' && (
++              <StepsWidget
++                simulator={simulator}
++                onClose={() => setIsWidgetDrawerOpen(false)}
++              />
++            )}
++            {activeWidget === 'weather' && (
++              <WeatherWidget
++                simulator={simulator}
++                onClose={() => setIsWidgetDrawerOpen(false)}
++              />
++            )}
++            {activeWidget === 'music' && (
++              <MusicWidget
++                simulator={simulator}
++                onClose={() => setIsWidgetDrawerOpen(false)}
++              />
++            )}
++            {activeWidget === 'battery' && (
++              <BatteryWidget
++                simulator={simulator}
++                onClose={() => setIsWidgetDrawerOpen(false)}
++              />
++            )}
++            {!activeWidget && (
++              <HeartRateWidget
++                simulator={simulator}
++                onClose={() => setIsWidgetDrawerOpen(false)}
++              />
++            )}
++          </div>
++        )}
++      </div>
++
++      {/* Floating / Docked Studio Controls */}
++      {showControls && (
++        <div className="mt-3">
++          <StudioControls
++            product={product}
++            colors={product?.colors}
++            selectedColor={selectedColor}
++            onSelectColor={setSelectedColor}
++            activeFace={activeFace}
++            onSelectFace={setActiveFace}
++            activeCameraPreset={cameraPreset}
++            onSelectCameraPreset={applyCameraPreset}
++            isAutoRotating={isAutoRotating}
++            onToggleAutoRotate={() => setIsAutoRotating((prev) => !prev)}
++            isWidgetDrawerOpen={isWidgetDrawerOpen}
++            onToggleWidgetDrawer={() => setIsWidgetDrawerOpen((prev) => !prev)}
++            activeWidget={activeWidget}
++            onSelectWidget={(w) => {
++              setActiveWidget(w);
++              setIsWidgetDrawerOpen(true);
++            }}
++          />
++        </div>
++      )}
++    </div>
++  );
++};
+diff --git a/src/components/widgets/BatteryWidget.tsx b/src/components/widgets/BatteryWidget.tsx
+new file mode 100644
+index 0000000..38add41
+--- /dev/null
++++ b/src/components/widgets/BatteryWidget.tsx
+@@ -0,0 +1,140 @@
++import React from 'react';
++import type { WatchSimulatorState } from '../../hooks/useWatchSimulator';
++import { Battery, BatteryCharging, Zap, Leaf, Sparkles, AlertCircle } from 'lucide-react';
++
++export interface BatteryWidgetProps {
++  simulator: WatchSimulatorState;
++  onClose?: () => void;
++}
++
++export const BatteryWidget: React.FC<BatteryWidgetProps> = ({ simulator, onClose }) => {
++  const {
++    batteryLevel,
++    setBatteryLevel,
++    isCharging,
++    toggleCharging,
++    isEcoMode,
++    toggleEcoMode,
++    batteryEstimateHours,
++  } = simulator;
++
++  // Color mapping based on level
++  const getBatteryColor = (level: number) => {
++    if (level <= 20) return 'from-rose-500 to-amber-500';
++    if (level <= 50) return 'from-amber-500 to-emerald-500';
++    return 'from-emerald-500 to-cyan-500';
++  };
++
++  return (
++    <div className="flex flex-col gap-4 p-5 rounded-2xl bg-white/90 backdrop-blur-md border border-purple-100 shadow-sm">
++      {/* Header */}
++      <div className="flex items-center justify-between">
++        <div className="flex items-center gap-2">
++          <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200/50">
++            {isCharging ? (
++              <BatteryCharging className="w-5 h-5 text-emerald-600 animate-pulse" />
++            ) : (
++              <Battery className="w-5 h-5 text-emerald-600" />
++            )}
++          </div>
++          <div>
++            <h4 className="text-sm font-bold text-slate-900">Battery & Power</h4>
++            <p className="text-xs text-slate-500">Dual-cell Li-Po Architecture</p>
++          </div>
++        </div>
++
++        {onClose && (
++          <button
++            onClick={onClose}
++            className="text-xs text-slate-400 hover:text-slate-600 px-2 py-1 rounded-md"
++          >
++            ✕
++          </button>
++        )}
++      </div>
++
++      {/* Main Charge Meter */}
++      <div className="flex items-center justify-between bg-gradient-to-r from-emerald-50/50 to-cyan-50/50 p-4 rounded-xl border border-emerald-100/60">
++        <div>
++          <div className="flex items-baseline gap-1">
++            <span className="text-4xl font-extrabold text-slate-900 tracking-tight">
++              {batteryLevel}%
++            </span>
++            {isCharging && (
++              <span className="text-xs font-bold text-emerald-600 flex items-center gap-0.5 ml-1">
++                <Zap className="w-3.5 h-3.5 fill-emerald-500" />
++                Charging
++              </span>
++            )}
++          </div>
++          <p className="text-xs font-medium text-slate-600 mt-1 flex items-center gap-1">
++            <Sparkles className="w-3.5 h-3.5 text-cyan-600" />
++            Est. ~{batteryEstimateHours} hrs remaining {isEcoMode && '(Eco Extended)'}
++          </p>
++        </div>
++
++        {/* Battery Physical Visual Meter */}
++        <div className="w-20 h-10 border-2 border-slate-700 rounded-lg p-1 relative flex items-center bg-slate-900/5">
++          <div
++            className={`h-full rounded bg-gradient-to-r ${getBatteryColor(
++              batteryLevel
++            )} transition-all duration-300`}
++            style={{ width: `${batteryLevel}%` }}
++          />
++          {/* Terminal pip */}
++          <div className="absolute -right-2 top-2.5 w-1.5 h-5 bg-slate-700 rounded-r-sm" />
++        </div>
++      </div>
++
++      {/* Battery Adjustment Slider */}
++      <div>
++        <div className="flex justify-between text-xs text-slate-500 mb-1">
++          <span>Simulate Charge Level</span>
++          <span className="font-bold text-slate-700">{batteryLevel}%</span>
++        </div>
++        <input
++          type="range"
++          min="0"
++          max="100"
++          value={batteryLevel}
++          onChange={(e) => setBatteryLevel(Number(e.target.value))}
++          className="w-full accent-purple-600 h-2 bg-purple-100 rounded-lg cursor-pointer"
++        />
++      </div>
++
++      {/* Toggles: Charger & Eco Mode */}
++      <div className="grid grid-cols-2 gap-2.5">
++        <button
++          onClick={toggleCharging}
++          className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-xs font-semibold transition-all ${
++            isCharging
++              ? 'bg-emerald-100/70 border-emerald-300 text-emerald-800'
++              : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
++          }`}
++        >
++          <Zap className={`w-4 h-4 ${isCharging ? 'fill-emerald-600 text-emerald-600' : ''}`} />
++          <span>{isCharging ? 'Charger Plugged' : 'Plug In Charger'}</span>
++        </button>
++
++        <button
++          onClick={toggleEcoMode}
++          className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-xs font-semibold transition-all ${
++            isEcoMode
++              ? 'bg-cyan-100/70 border-cyan-300 text-cyan-800 ring-2 ring-cyan-400/30'
++              : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
++          }`}
++        >
++          <Leaf className={`w-4 h-4 ${isEcoMode ? 'fill-cyan-600 text-cyan-600' : ''}`} />
++          <span>{isEcoMode ? 'Eco Mode Active' : 'Enable Eco Mode'}</span>
++        </button>
++      </div>
++
++      {isEcoMode && (
++        <div className="flex items-center gap-2 p-2.5 rounded-lg bg-cyan-50/70 text-cyan-800 border border-cyan-200 text-[11px]">
++          <AlertCircle className="w-4 h-4 flex-shrink-0 text-cyan-600" />
++          <span>Power-Saving Mode dims display refresh and throttles background sensor sampling.</span>
++        </div>
++      )}
++    </div>
++  );
++};
+diff --git a/src/components/widgets/HeartRateWidget.tsx b/src/components/widgets/HeartRateWidget.tsx
+new file mode 100644
+index 0000000..2786e1c
+--- /dev/null
++++ b/src/components/widgets/HeartRateWidget.tsx
+@@ -0,0 +1,174 @@
++import React, { useEffect, useRef, useState } from 'react';
++import type { WatchSimulatorState } from '../../hooks/useWatchSimulator';
++import { generateECGWave } from '../../hooks/useWatchSimulator';
++import { Heart, Activity, RefreshCw, ShieldCheck, Zap } from 'lucide-react';
++
++export interface HeartRateWidgetProps {
++  simulator: WatchSimulatorState;
++  onClose?: () => void;
++}
++
++export const HeartRateWidget: React.FC<HeartRateWidgetProps> = ({ simulator, onClose }) => {
++  const { heartRate, isMeasuringHeartRate, heartRateStatus, measureHeartRate } = simulator;
++  const canvasRef = useRef<HTMLCanvasElement | null>(null);
++  const [pulseScale, setPulseScale] = useState(1);
++
++  // Animate ECG sparkline canvas
++  useEffect(() => {
++    let animId: number;
++    let phase = 0;
++
++    const render = () => {
++      const canvas = canvasRef.current;
++      if (!canvas) return;
++      const ctx = canvas.getContext('2d');
++      if (!ctx) return;
++
++      const width = canvas.width;
++      const height = canvas.height;
++      ctx.clearRect(0, 0, width, height);
++
++      // Background subtle grid
++      ctx.strokeStyle = 'rgba(124, 58, 237, 0.08)';
++      ctx.lineWidth = 1;
++      const step = 20;
++      for (let x = 0; x < width; x += step) {
++        ctx.beginPath();
++        ctx.moveTo(x, 0);
++        ctx.lineTo(x, height);
++        ctx.stroke();
++      }
++      for (let y = 0; y < height; y += step) {
++        ctx.beginPath();
++        ctx.moveTo(0, y);
++        ctx.lineTo(width, y);
++        ctx.stroke();
++      }
++
++      // ECG waveform
++      const sampleCount = 90;
++      const points = generateECGWave(sampleCount, heartRate, phase);
++
++      ctx.beginPath();
++      ctx.strokeStyle = '#7C3AED';
++      ctx.lineWidth = 2.5;
++      ctx.lineJoin = 'round';
++      ctx.lineCap = 'round';
++
++      const centerY = height / 2;
++      const scaleY = (height / 2) * 0.75;
++
++      points.forEach((val, index) => {
++        const x = (index / (sampleCount - 1)) * width;
++        const y = centerY - val * scaleY;
++        if (index === 0) {
++          ctx.moveTo(x, y);
++        } else {
++          ctx.lineTo(x, y);
++        }
++      });
++      ctx.stroke();
++
++      // Glowing dot at current leading pulse
++      const lastIndex = points.length - 1;
++      const lastX = width;
++      const lastY = centerY - points[lastIndex] * scaleY;
++      ctx.beginPath();
++      ctx.arc(lastX - 4, lastY, 4, 0, Math.PI * 2);
++      ctx.fillStyle = '#06B6D4';
++      ctx.shadowColor = '#06B6D4';
++      ctx.shadowBlur = 8;
++      ctx.fill();
++      ctx.shadowBlur = 0;
++
++      // Phase progression matches current heart rate
++      phase += (heartRate / 60) * 0.015;
++      animId = requestAnimationFrame(render);
++    };
++
++    animId = requestAnimationFrame(render);
++    return () => cancelAnimationFrame(animId);
++  }, [heartRate]);
++
++  // Pulse effect trigger
++  useEffect(() => {
++    setPulseScale(1.15);
++    const timer = setTimeout(() => setPulseScale(1), 220);
++    return () => clearTimeout(timer);
++  }, [heartRate]);
++
++  return (
++    <div className="flex flex-col gap-4 p-5 rounded-2xl bg-white/90 backdrop-blur-md border border-purple-100 shadow-sm">
++      {/* Header */}
++      <div className="flex items-center justify-between">
++        <div className="flex items-center gap-2">
++          <div className="p-2 rounded-xl bg-purple-50 text-purple-600 border border-purple-200/50">
++            <Heart
++              className="w-5 h-5 transition-transform duration-200 text-rose-500 fill-rose-500"
++              style={{ transform: `scale(${pulseScale})` }}
++            />
++          </div>
++          <div>
++            <h4 className="text-sm font-bold text-slate-900">Heart Rate ECG</h4>
++            <p className="text-xs text-slate-500">Optical PPG Bio-Sensor</p>
++          </div>
++        </div>
++
++        {onClose && (
++          <button
++            onClick={onClose}
++            className="text-xs text-slate-400 hover:text-slate-600 px-2 py-1 rounded-md"
++          >
++            ✕
++          </button>
++        )}
++      </div>
++
++      {/* Main Readout */}
++      <div className="flex items-baseline justify-between bg-gradient-to-r from-purple-50/60 to-cyan-50/40 p-4 rounded-xl border border-purple-100/50">
++        <div>
++          <span className="text-4xl font-extrabold text-slate-900 tracking-tight">
++            {heartRate}
++          </span>
++          <span className="ml-1.5 text-sm font-semibold text-purple-700">BPM</span>
++          <p className="text-xs font-medium text-slate-600 mt-1 flex items-center gap-1">
++            <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
++            {heartRateStatus}
++          </p>
++        </div>
++
++        <div className="text-right">
++          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-cyan-100/70 text-cyan-800">
++            <Zap className="w-3 h-3 text-cyan-600" />
++            98% SpO2
++          </span>
++          <p className="text-[11px] text-slate-400 mt-1">Resting: 60-100 BPM</p>
++        </div>
++      </div>
++
++      {/* Real-time ECG Canvas */}
++      <div className="relative rounded-xl overflow-hidden bg-slate-900/5 border border-purple-100">
++        <canvas
++          ref={canvasRef}
++          width={320}
++          height={90}
++          className="w-full h-[90px] block"
++        />
++        <div className="absolute top-2 left-2 flex items-center gap-1 text-[10px] font-mono text-purple-600 font-semibold bg-white/80 px-1.5 py-0.5 rounded">
++          <Activity className="w-3 h-3" />
++          <span>LEAD-I ECG</span>
++        </div>
++      </div>
++
++      {/* Action Simulation Button */}
++      <button
++        onClick={measureHeartRate}
++        disabled={isMeasuringHeartRate}
++        className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-medium text-sm text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 shadow-md shadow-purple-500/20 active:scale-[0.99] transition-all disabled:opacity-75"
++      >
++        <RefreshCw className={`w-4 h-4 ${isMeasuringHeartRate ? 'animate-spin' : ''}`} />
++        <span>{isMeasuringHeartRate ? 'Measuring Bio-Pulse...' : 'Measure Pulse Now (68-128 BPM)'}</span>
++      </button>
++    </div>
++  );
++};
+diff --git a/src/components/widgets/MusicWidget.tsx b/src/components/widgets/MusicWidget.tsx
+new file mode 100644
+index 0000000..a5db83d
+--- /dev/null
++++ b/src/components/widgets/MusicWidget.tsx
+@@ -0,0 +1,136 @@
++import React from 'react';
++import type { WatchSimulatorState } from '../../hooks/useWatchSimulator';
++import { Play, Pause, SkipBack, SkipForward, Music, Disc3, Volume2 } from 'lucide-react';
++
++export interface MusicWidgetProps {
++  simulator: WatchSimulatorState;
++  onClose?: () => void;
++}
++
++export const MusicWidget: React.FC<MusicWidgetProps> = ({ simulator, onClose }) => {
++  const {
++    currentTrack,
++    isPlayingMusic,
++    toggleMusicPlay,
++    nextTrack,
++    prevTrack,
++    musicProgressSec,
++    equalizerBars,
++  } = simulator;
++
++  const formatTime = (seconds: number) => {
++    const mins = Math.floor(seconds / 60);
++    const secs = seconds % 60;
++    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
++  };
++
++  const progressPercent = Math.min(
++    100,
++    Math.round((musicProgressSec / currentTrack.durationSec) * 100)
++  );
++
++  return (
++    <div className="flex flex-col gap-4 p-5 rounded-2xl bg-white/90 backdrop-blur-md border border-purple-100 shadow-sm">
++      {/* Header */}
++      <div className="flex items-center justify-between">
++        <div className="flex items-center gap-2">
++          <div className="p-2 rounded-xl bg-purple-50 text-purple-600 border border-purple-200/50">
++            <Music className="w-5 h-5 text-purple-600" />
++          </div>
++          <div>
++            <h4 className="text-sm font-bold text-slate-900">Music Player</h4>
++            <p className="text-xs text-slate-500">Bluetooth Audio 5.3</p>
++          </div>
++        </div>
++
++        {onClose && (
++          <button
++            onClick={onClose}
++            className="text-xs text-slate-400 hover:text-slate-600 px-2 py-1 rounded-md"
++          >
++            ✕
++          </button>
++        )}
++      </div>
++
++      {/* Album Art & Track Info Card */}
++      <div className="flex items-center gap-4 bg-gradient-to-r from-purple-50/70 via-indigo-50/50 to-cyan-50/50 p-4 rounded-xl border border-purple-100">
++        <div
++          className="w-16 h-16 rounded-xl flex items-center justify-center flex-shrink-0 shadow-md transition-transform duration-300"
++          style={{ backgroundColor: currentTrack.albumArtColor }}
++        >
++          <Disc3
++            className={`w-9 h-9 text-white/90 ${
++              isPlayingMusic ? 'animate-spin' : ''
++            }`}
++            style={{ animationDuration: '4s' }}
++          />
++        </div>
++
++        <div className="flex-1 min-w-0">
++          <h5 className="text-sm font-extrabold text-slate-900 truncate">
++            {currentTrack.title}
++          </h5>
++          <p className="text-xs text-slate-600 truncate mt-0.5">{currentTrack.artist}</p>
++
++          {/* Equalizer Bars */}
++          <div className="flex items-end gap-1 h-4 mt-2">
++            {equalizerBars.map((height, idx) => (
++              <span
++                key={idx}
++                className="w-1 bg-gradient-to-t from-purple-600 to-cyan-500 rounded-full transition-all duration-300"
++                style={{
++                  height: isPlayingMusic ? `${height}%` : '20%',
++                }}
++              />
++            ))}
++            <span className="text-[10px] text-slate-400 ml-1.5 font-medium">
++              {isPlayingMusic ? 'Playing' : 'Paused'}
++            </span>
++          </div>
++        </div>
++      </div>
++
++      {/* Progress Bar */}
++      <div>
++        <div className="w-full bg-purple-100 rounded-full h-1.5 overflow-hidden">
++          <div
++            className="bg-gradient-to-r from-purple-600 to-cyan-500 h-1.5 rounded-full transition-all duration-300"
++            style={{ width: `${progressPercent}%` }}
++          />
++        </div>
++        <div className="flex justify-between text-[11px] text-slate-400 font-medium mt-1">
++          <span>{formatTime(musicProgressSec)}</span>
++          <span>{formatTime(currentTrack.durationSec)}</span>
++        </div>
++      </div>
++
++      {/* Playback Controls */}
++      <div className="flex items-center justify-center gap-4 pt-1">
++        <button
++          onClick={prevTrack}
++          title="Previous Track"
++          className="p-2.5 rounded-full text-slate-600 hover:bg-purple-100/60 active:scale-95 transition-all"
++        >
++          <SkipBack className="w-5 h-5" />
++        </button>
++
++        <button
++          onClick={toggleMusicPlay}
++          title={isPlayingMusic ? 'Pause' : 'Play'}
++          className="p-3.5 rounded-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-500/25 hover:from-purple-700 hover:to-indigo-700 active:scale-95 transition-all"
++        >
++          {isPlayingMusic ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
++        </button>
++
++        <button
++          onClick={nextTrack}
++          title="Next Track"
++          className="p-2.5 rounded-full text-slate-600 hover:bg-purple-100/60 active:scale-95 transition-all"
++        >
++          <SkipForward className="w-5 h-5" />
++        </button>
++      </div>
++    </div>
++  );
++};
+diff --git a/src/components/widgets/StepsWidget.tsx b/src/components/widgets/StepsWidget.tsx
+new file mode 100644
+index 0000000..149adc8
+--- /dev/null
++++ b/src/components/widgets/StepsWidget.tsx
+@@ -0,0 +1,137 @@
++import React from 'react';
++import type { WatchSimulatorState } from '../../hooks/useWatchSimulator';
++import { Footprints, Flame, Navigation, RotateCcw, Plus, Award } from 'lucide-react';
++
++export interface StepsWidgetProps {
++  simulator: WatchSimulatorState;
++  onClose?: () => void;
++}
++
++export const StepsWidget: React.FC<StepsWidgetProps> = ({ simulator, onClose }) => {
++  const { stepCount, stepGoal, stepMetrics, addSteps, resetSteps } = simulator;
++  const { progressPercent, distanceKm, caloriesBurned } = stepMetrics;
++
++  // SVG ring circumference calculation
++  const radius = 42;
++  const circumference = 2 * Math.PI * radius;
++  const strokeDashoffset = circumference - (progressPercent / 100) * circumference;
++
++  return (
++    <div className="flex flex-col gap-4 p-5 rounded-2xl bg-white/90 backdrop-blur-md border border-purple-100 shadow-sm">
++      {/* Header */}
++      <div className="flex items-center justify-between">
++        <div className="flex items-center gap-2">
++          <div className="p-2 rounded-xl bg-cyan-50 text-cyan-600 border border-cyan-200/50">
++            <Footprints className="w-5 h-5 text-cyan-600" />
++          </div>
++          <div>
++            <h4 className="text-sm font-bold text-slate-900">Activity & Steps</h4>
++            <p className="text-xs text-slate-500">10,000 Daily Goal</p>
++          </div>
++        </div>
++
++        {onClose && (
++          <button
++            onClick={onClose}
++            className="text-xs text-slate-400 hover:text-slate-600 px-2 py-1 rounded-md"
++          >
++            ✕
++          </button>
++        )}
++      </div>
++
++      {/* Radial Progress + Key Numbers */}
++      <div className="flex items-center gap-4 bg-gradient-to-r from-cyan-50/50 to-purple-50/50 p-4 rounded-xl border border-cyan-100/60">
++        {/* SVG Circular Progress Ring */}
++        <div className="relative w-24 h-24 flex-shrink-0 flex items-center justify-center">
++          <svg className="w-24 h-24 -rotate-90 transform" viewBox="0 0 100 100">
++            {/* Background Track */}
++            <circle
++              cx="50"
++              cy="50"
++              r={radius}
++              className="stroke-purple-100"
++              strokeWidth="8"
++              fill="transparent"
++            />
++            {/* Progress Arc */}
++            <circle
++              cx="50"
++              cy="50"
++              r={radius}
++              stroke="url(#stepsGradient)"
++              strokeWidth="8"
++              strokeDasharray={circumference}
++              strokeDashoffset={strokeDashoffset}
++              strokeLinecap="round"
++              fill="transparent"
++              className="transition-all duration-500 ease-out"
++            />
++            <defs>
++              <linearGradient id="stepsGradient" x1="0%" y1="0%" x2="100%" y2="100%">
++                <stop offset="0%" stopColor="#06B6D4" />
++                <stop offset="100%" stopColor="#7C3AED" />
++              </linearGradient>
++            </defs>
++          </svg>
++
++          {/* Center Percentage */}
++          <div className="absolute inset-0 flex flex-col items-center justify-center">
++            <span className="text-base font-extrabold text-slate-900">{progressPercent}%</span>
++            <span className="text-[10px] text-slate-400 font-medium">GOAL</span>
++          </div>
++        </div>
++
++        {/* Counter Info */}
++        <div className="flex-1">
++          <span className="text-3xl font-extrabold text-slate-900 tracking-tight">
++            {stepCount.toLocaleString()}
++          </span>
++          <span className="ml-1 text-xs font-semibold text-slate-500">/ {stepGoal.toLocaleString()}</span>
++          <p className="text-xs font-medium text-cyan-700 mt-1 flex items-center gap-1">
++            <Award className="w-3.5 h-3.5" />
++            {progressPercent >= 100 ? 'Goal Completed!' : `${(stepGoal - stepCount > 0 ? stepGoal - stepCount : 0).toLocaleString()} steps left`}
++          </p>
++        </div>
++      </div>
++
++      {/* Telemetry Stats: Distance & Calories */}
++      <div className="grid grid-cols-2 gap-2.5">
++        <div className="flex items-center gap-2.5 p-3 rounded-xl bg-purple-50/60 border border-purple-100">
++          <Navigation className="w-4 h-4 text-purple-600 flex-shrink-0" />
++          <div>
++            <p className="text-[11px] text-slate-500 font-medium">Distance</p>
++            <p className="text-sm font-bold text-slate-800">{distanceKm} km</p>
++          </div>
++        </div>
++
++        <div className="flex items-center gap-2.5 p-3 rounded-xl bg-rose-50/60 border border-rose-100">
++          <Flame className="w-4 h-4 text-rose-500 flex-shrink-0" />
++          <div>
++            <p className="text-[11px] text-slate-500 font-medium">Active Burn</p>
++            <p className="text-sm font-bold text-slate-800">{caloriesBurned} kcal</p>
++          </div>
++        </div>
++      </div>
++
++      {/* Action Controls */}
++      <div className="flex items-center gap-2">
++        <button
++          onClick={() => addSteps(500)}
++          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl font-medium text-sm text-white bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-700 hover:to-teal-700 shadow-md shadow-cyan-500/20 active:scale-[0.99] transition-all"
++        >
++          <Plus className="w-4 h-4" />
++          <span>+500 Steps Walk</span>
++        </button>
++
++        <button
++          onClick={resetSteps}
++          title="Reset Step Counter"
++          className="p-2.5 rounded-xl border border-purple-200 text-slate-600 hover:bg-purple-50 transition-colors"
++        >
++          <RotateCcw className="w-4 h-4" />
++        </button>
++      </div>
++    </div>
++  );
++};
+diff --git a/src/components/widgets/WeatherWidget.tsx b/src/components/widgets/WeatherWidget.tsx
+new file mode 100644
+index 0000000..6fc0024
+--- /dev/null
++++ b/src/components/widgets/WeatherWidget.tsx
+@@ -0,0 +1,103 @@
++import React from 'react';
++import type { WatchSimulatorState } from '../../hooks/useWatchSimulator';
++import { celsiusToFahrenheit } from '../../hooks/useWatchSimulator';
++import { Sun, CloudSun, Droplets, Compass, Thermometer } from 'lucide-react';
++
++export interface WeatherWidgetProps {
++  simulator: WatchSimulatorState;
++  onClose?: () => void;
++}
++
++export const WeatherWidget: React.FC<WeatherWidgetProps> = ({ simulator, onClose }) => {
++  const { weather, isCelsius, toggleWeatherUnit, currentTemperature } = simulator;
++
++  return (
++    <div className="flex flex-col gap-4 p-5 rounded-2xl bg-white/90 backdrop-blur-md border border-purple-100 shadow-sm">
++      {/* Header */}
++      <div className="flex items-center justify-between">
++        <div className="flex items-center gap-2">
++          <div className="p-2 rounded-xl bg-amber-50 text-amber-500 border border-amber-200/50">
++            <Sun className="w-5 h-5 text-amber-500" />
++          </div>
++          <div>
++            <h4 className="text-sm font-bold text-slate-900">Weather & Forecast</h4>
++            <p className="text-xs text-slate-500">San Francisco, CA</p>
++          </div>
++        </div>
++
++        {onClose && (
++          <button
++            onClick={onClose}
++            className="text-xs text-slate-400 hover:text-slate-600 px-2 py-1 rounded-md"
++          >
++            ✕
++          </button>
++        )}
++      </div>
++
++      {/* Main Temperature & Condition */}
++      <div className="flex items-center justify-between bg-gradient-to-r from-amber-50/60 via-purple-50/40 to-cyan-50/40 p-4 rounded-xl border border-amber-100/60">
++        <div>
++          <div className="flex items-start">
++            <span className="text-4xl font-extrabold text-slate-900 tracking-tight">
++              {currentTemperature}
++            </span>
++            <button
++              onClick={toggleWeatherUnit}
++              title="Toggle Celsius / Fahrenheit"
++              className="ml-1 text-sm font-bold text-purple-700 bg-purple-100/70 hover:bg-purple-200 px-2 py-0.5 rounded-lg transition-colors cursor-pointer"
++            >
++              °{isCelsius ? 'C' : 'F'}
++            </button>
++          </div>
++          <p className="text-xs font-semibold text-slate-700 mt-1 flex items-center gap-1.5">
++            <CloudSun className="w-4 h-4 text-amber-500" />
++            {weather.condition}
++          </p>
++        </div>
++
++        <div className="flex flex-col items-end gap-1 text-right">
++          <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 bg-white/80 px-2 py-1 rounded-lg border border-purple-100">
++            <Droplets className="w-3.5 h-3.5 text-cyan-500" />
++            {weather.humidity}% Humidity
++          </span>
++          <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 bg-white/80 px-2 py-1 rounded-lg border border-purple-100">
++            <Compass className="w-3.5 h-3.5 text-amber-500" />
++            UV {weather.uvIndex} (Moderate)
++          </span>
++        </div>
++      </div>
++
++      {/* 3-Hour Mini Forecast */}
++      <div>
++        <p className="text-xs font-semibold text-slate-500 mb-2 flex items-center gap-1">
++          <Thermometer className="w-3.5 h-3.5 text-purple-500" />
++          3-Hour Outlook
++        </p>
++        <div className="grid grid-cols-4 gap-2">
++          {weather.hourly.map((item, idx) => {
++            const displayTemp = isCelsius ? item.tempC : celsiusToFahrenheit(item.tempC);
++            return (
++              <div
++                key={idx}
++                className="flex flex-col items-center py-2.5 px-1 rounded-xl bg-purple-50/40 border border-purple-100/80 text-center"
++              >
++                <span className="text-[11px] font-medium text-slate-500">{item.time}</span>
++                <div className="my-1 text-amber-500">
++                  {item.condition.includes('Sun') ? (
++                    <Sun className="w-4 h-4" />
++                  ) : (
++                    <CloudSun className="w-4 h-4" />
++                  )}
++                </div>
++                <span className="text-xs font-bold text-slate-800">
++                  {displayTemp}°{isCelsius ? 'C' : 'F'}
++                </span>
++              </div>
++            );
++          })}
++        </div>
++      </div>
++    </div>
++  );
++};
+diff --git a/src/hooks/useWatchSimulator.ts b/src/hooks/useWatchSimulator.ts
+new file mode 100644
+index 0000000..e2dc3da
+--- /dev/null
++++ b/src/hooks/useWatchSimulator.ts
+@@ -0,0 +1,351 @@
++import { useState, useCallback, useMemo } from 'react';
++import type { WatchFaceId, ActiveWidgetId } from '../types';
++
++export interface Track {
++  id: string;
++  title: string;
++  artist: string;
++  durationSec: number;
++  albumArtColor: string;
++}
++
++export const TRACK_LIST: Track[] = [
++  {
++    id: 'track-1',
++    title: 'Midnight Horizon',
++    artist: 'Aura Sounds',
++    durationSec: 195,
++    albumArtColor: '#7C3AED',
++  },
++  {
++    id: 'track-2',
++    title: 'Cyber Pulse',
++    artist: 'Neon Drive',
++    durationSec: 210,
++    albumArtColor: '#06B6D4',
++  },
++  {
++    id: 'track-3',
++    title: 'Solar Drift',
++    artist: 'Cosmic Echoes',
++    durationSec: 180,
++    albumArtColor: '#8B5CF6',
++  },
++  {
++    id: 'track-4',
++    title: 'Deep Focus',
++    artist: 'Lumina Ambient',
++    durationSec: 240,
++    albumArtColor: '#3B82F6',
++  },
++];
++
++export interface HourlyForecast {
++  time: string;
++  tempC: number;
++  condition: string;
++}
++
++export const DEFAULT_FORECAST: HourlyForecast[] = [
++  { time: 'Now', tempC: 24, condition: 'Sunny' },
++  { time: '14:00', tempC: 25, condition: 'Partly Cloudy' },
++  { time: '15:00', tempC: 26, condition: 'Sunny' },
++  { time: '16:00', tempC: 23, condition: 'Clear' },
++];
++
++export function clamp(val: number, min: number, max: number): number {
++  return Math.min(Math.max(val, min), max);
++}
++
++export function calculateStepMetrics(steps: number, goal = 10000): {
++  progressPercent: number;
++  distanceKm: number;
++  caloriesBurned: number;
++} {
++  const safeSteps = Math.max(0, steps);
++  const progressPercent = clamp(Math.round((safeSteps / goal) * 100), 0, 100);
++  const distanceKm = parseFloat((safeSteps * 0.000762).toFixed(2));
++  const caloriesBurned = Math.round(safeSteps * 0.04);
++
++  return {
++    progressPercent,
++    distanceKm,
++    caloriesBurned,
++  };
++}
++
++export function generateECGWave(sampleCount: number, bpm = 72, phase = 0): number[] {
++  const points: number[] = [];
++  const cycles = (bpm / 60) * 1.5;
++
++  for (let i = 0; i < sampleCount; i++) {
++    const t = ((i / sampleCount) * cycles + phase) % 1.0;
++    let y = 0;
++
++    // Baseline slight drift
++    y += 0.05 * Math.sin(t * Math.PI * 2);
++
++    // P-wave (at t ~ 0.15)
++    if (t > 0.1 && t < 0.22) {
++      const pPhase = (t - 0.16) / 0.06;
++      y += 0.18 * Math.exp(-Math.pow(pPhase * 2.5, 2));
++    }
++
++    // Q-dip (at t ~ 0.27)
++    if (t > 0.25 && t < 0.29) {
++      y -= 0.15 * Math.sin(((t - 0.25) / 0.04) * Math.PI);
++    }
++
++    // R-peak (at t ~ 0.32) - sharp high spike
++    if (t > 0.28 && t < 0.36) {
++      const rPhase = (t - 0.32) / 0.04;
++      y += 0.95 * Math.exp(-Math.pow(rPhase * 3.5, 2));
++    }
++
++    // S-dip (at t ~ 0.38)
++    if (t > 0.35 && t < 0.42) {
++      y -= 0.28 * Math.exp(-Math.pow(((t - 0.385) / 0.035) * 3, 2));
++    }
++
++    // T-wave (at t ~ 0.55)
++    if (t > 0.46 && t < 0.68) {
++      const tPhase = (t - 0.57) / 0.11;
++      y += 0.32 * Math.exp(-Math.pow(tPhase * 2.2, 2));
++    }
++
++    points.push(clamp(parseFloat(y.toFixed(3)), -1, 1));
++  }
++
++  return points;
++}
++
++export function calculateBatteryEstimate(level: number, isEco: boolean): number {
++  const safeLevel = clamp(level, 0, 100);
++  const baseHours = Math.round((safeLevel / 100) * 48);
++  if (isEco) {
++    return Math.round(baseHours * 1.75);
++  }
++  return baseHours;
++}
++
++export function celsiusToFahrenheit(c: number): number {
++  return Math.round((c * 9) / 5 + 32);
++}
++
++export function fahrenheitToCelsius(f: number): number {
++  return Math.round(((f - 32) * 5) / 9);
++}
++
++export interface WatchSimulatorState {
++  activeFace: WatchFaceId;
++  setActiveFace: (face: WatchFaceId) => void;
++  activeWidget: ActiveWidgetId | null;
++  setActiveWidget: (widget: ActiveWidgetId | null) => void;
++
++  // Heart Rate
++  heartRate: number;
++  isMeasuringHeartRate: boolean;
++  heartRateStatus: string;
++  measureHeartRate: () => void;
++
++  // Steps
++  stepCount: number;
++  stepGoal: number;
++  stepMetrics: {
++    progressPercent: number;
++    distanceKm: number;
++    caloriesBurned: number;
++  };
++  addSteps: (count?: number) => void;
++  resetSteps: () => void;
++
++  // Battery
++  batteryLevel: number;
++  setBatteryLevel: (level: number) => void;
++  isCharging: boolean;
++  toggleCharging: () => void;
++  isEcoMode: boolean;
++  toggleEcoMode: () => void;
++  batteryEstimateHours: number;
++
++  // Weather
++  weather: {
++    tempC: number;
++    condition: string;
++    humidity: number;
++    uvIndex: number;
++    hourly: HourlyForecast[];
++  };
++  isCelsius: boolean;
++  toggleWeatherUnit: () => void;
++  currentTemperature: number;
++
++  // Music
++  currentTrack: Track;
++  currentTrackIndex: number;
++  isPlayingMusic: boolean;
++  toggleMusicPlay: () => void;
++  nextTrack: () => void;
++  prevTrack: () => void;
++  musicProgressSec: number;
++  equalizerBars: number[];
++}
++
++export function useWatchSimulator(initialFace: WatchFaceId = 'minimal'): WatchSimulatorState {
++  const [activeFace, setActiveFace] = useState<WatchFaceId>(initialFace);
++  const [activeWidget, setActiveWidget] = useState<ActiveWidgetId | null>('heart_rate');
++
++  // Heart Rate State
++  const [heartRate, setHeartRate] = useState<number>(72);
++  const [isMeasuringHeartRate, setIsMeasuringHeartRate] = useState<boolean>(false);
++  const [heartRateStatus, setHeartRateStatus] = useState<string>('Normal Resting Rate');
++
++  const measureHeartRate = useCallback(() => {
++    setIsMeasuringHeartRate(true);
++    // Simulate realistic fluctuation between 68 and 128 BPM
++    const randomBpm = Math.floor(Math.random() * (128 - 68 + 1)) + 68;
++    setHeartRate(randomBpm);
++
++    if (randomBpm < 70) {
++      setHeartRateStatus('Resting Rate');
++    } else if (randomBpm <= 88) {
++      setHeartRateStatus('Normal Resting Rate');
++    } else if (randomBpm <= 110) {
++      setHeartRateStatus('Optimal Active Rate');
++    } else {
++      setHeartRateStatus('Elevated Heart Rate');
++    }
++
++    setTimeout(() => {
++      setIsMeasuringHeartRate(false);
++    }, 600);
++  }, []);
++
++  // Steps State
++  const [stepCount, setStepCount] = useState<number>(6420);
++  const stepGoal = 10000;
++
++  const stepMetrics = useMemo(() => {
++    return calculateStepMetrics(stepCount, stepGoal);
++  }, [stepCount, stepGoal]);
++
++  const addSteps = useCallback((count = 500) => {
++    setStepCount((prev) => prev + count);
++  }, []);
++
++  const resetSteps = useCallback(() => {
++    setStepCount(0);
++  }, []);
++
++  // Battery State
++  const [batteryLevel, setBatteryLevelRaw] = useState<number>(86);
++  const [isCharging, setIsCharging] = useState<boolean>(false);
++  const [isEcoMode, setIsEcoMode] = useState<boolean>(false);
++
++  const setBatteryLevel = useCallback((lvl: number) => {
++    setBatteryLevelRaw(clamp(lvl, 0, 100));
++  }, []);
++
++  const toggleCharging = useCallback(() => {
++    setIsCharging((prev) => !prev);
++  }, []);
++
++  const toggleEcoMode = useCallback(() => {
++    setIsEcoMode((prev) => !prev);
++  }, []);
++
++  const batteryEstimateHours = useMemo(() => {
++    return calculateBatteryEstimate(batteryLevel, isEcoMode);
++  }, [batteryLevel, isEcoMode]);
++
++  // Weather State
++  const [weather] = useState({
++    tempC: 24,
++    condition: 'Sunny',
++    humidity: 48,
++    uvIndex: 5,
++    hourly: DEFAULT_FORECAST,
++  });
++  const [isCelsius, setIsCelsius] = useState<boolean>(true);
++
++  const toggleWeatherUnit = useCallback(() => {
++    setIsCelsius((prev) => !prev);
++  }, []);
++
++  const currentTemperature = useMemo(() => {
++    return isCelsius ? weather.tempC : celsiusToFahrenheit(weather.tempC);
++  }, [isCelsius, weather.tempC]);
++
++  // Music State
++  const [currentTrackIndex, setCurrentTrackIndex] = useState<number>(0);
++  const [isPlayingMusic, setIsPlayingMusic] = useState<boolean>(false);
++  const [musicProgressSec] = useState<number>(42);
++
++  const currentTrack = useMemo(() => {
++    return TRACK_LIST[currentTrackIndex] || TRACK_LIST[0];
++  }, [currentTrackIndex]);
++
++  const toggleMusicPlay = useCallback(() => {
++    setIsPlayingMusic((prev) => !prev);
++  }, []);
++
++  const nextTrack = useCallback(() => {
++    setCurrentTrackIndex((prev) => (prev + 1) % TRACK_LIST.length);
++  }, []);
++
++  const prevTrack = useCallback(() => {
++    setCurrentTrackIndex((prev) => (prev - 1 + TRACK_LIST.length) % TRACK_LIST.length);
++  }, []);
++
++  const equalizerBars = useMemo(() => {
++    if (!isPlayingMusic) {
++      return [18, 12, 15, 10, 14];
++    }
++    return [65, 88, 42, 95, 70];
++  }, [isPlayingMusic]);
++
++  return {
++    activeFace,
++    setActiveFace,
++    activeWidget,
++    setActiveWidget,
++
++    // Heart Rate
++    heartRate,
++    isMeasuringHeartRate,
++    heartRateStatus,
++    measureHeartRate,
++
++    // Steps
++    stepCount,
++    stepGoal,
++    stepMetrics,
++    addSteps,
++    resetSteps,
++
++    // Battery
++    batteryLevel,
++    setBatteryLevel,
++    isCharging,
++    toggleCharging,
++    isEcoMode,
++    toggleEcoMode,
++    batteryEstimateHours,
++
++    // Weather
++    weather,
++    isCelsius,
++    toggleWeatherUnit,
++    currentTemperature,
++
++    // Music
++    currentTrack,
++    currentTrackIndex,
++    isPlayingMusic,
++    toggleMusicPlay,
++    nextTrack,
++    prevTrack,
++    musicProgressSec,
++    equalizerBars,
++  };
++}
+diff --git a/tests/simulator.test.ts b/tests/simulator.test.ts
+new file mode 100644
+index 0000000..a991224
+--- /dev/null
++++ b/tests/simulator.test.ts
+@@ -0,0 +1,674 @@
++// @vitest-environment jsdom
++import { describe, it, expect, vi } from 'vitest';
++import * as THREE from 'three';
++import React from 'react';
++import { render, screen, fireEvent } from '@testing-library/react';
++import {
++  calculateStepMetrics,
++  generateECGWave,
++  calculateBatteryEstimate,
++  celsiusToFahrenheit,
++  fahrenheitToCelsius,
++  clamp,
++  TRACK_LIST,
++  useWatchSimulator,
++} from '../src/hooks/useWatchSimulator';
++import { renderHook, act } from '@testing-library/react';
++import type { WatchFaceId, ActiveWidgetId, ColorOption } from '../src/types';
++
++import {
++  createBandModel,
++  createWatchRoundModel,
++  createWatchSquircleModel,
++  createWatchModel,
++  updateWatchMaterials,
++} from '../src/components/viewer3d/WatchGeometry';
++import {
++  renderWatchFace,
++  drawMinimalFace,
++  drawNeonFace,
++  drawChronoFace,
++  drawHealthFace,
++} from '../src/components/viewer3d/WatchFaceRenderer';
++import {
++  WatchScreenManager,
++  createWatchScreenManager,
++} from '../src/components/viewer3d/WatchScreenTexture';
++import { StudioControls } from '../src/components/viewer3d/StudioControls';
++import { HeartRateWidget } from '../src/components/widgets/HeartRateWidget';
++import { StepsWidget } from '../src/components/widgets/StepsWidget';
++import { WeatherWidget } from '../src/components/widgets/WeatherWidget';
++import { MusicWidget } from '../src/components/widgets/MusicWidget';
++import { BatteryWidget } from '../src/components/widgets/BatteryWidget';
++
++describe('Watch Simulator Calculation & Logic Utilities', () => {
++  describe('clamp helper', () => {
++    it('clamps values strictly within min and max', () => {
++      expect(clamp(150, 0, 100)).toBe(100);
++      expect(clamp(-20, 0, 100)).toBe(0);
++      expect(clamp(50, 0, 100)).toBe(50);
++    });
++  });
++
++  describe('Step Counter & Activity Metrics Calculation', () => {
++    it('calculates 0% progress for 0 steps', () => {
++      const metrics = calculateStepMetrics(0, 10000);
++      expect(metrics.progressPercent).toBe(0);
++      expect(metrics.distanceKm).toBe(0);
++      expect(metrics.caloriesBurned).toBe(0);
++    });
++
++    it('calculates correct metrics for 5,000 steps (half goal)', () => {
++      const metrics = calculateStepMetrics(5000, 10000);
++      expect(metrics.progressPercent).toBe(50);
++      // approx 0.000762 km per step = 3.81 km
++      expect(metrics.distanceKm).toBeCloseTo(3.81, 1);
++      // approx 0.04 kcal per step = 200 kcal
++      expect(metrics.caloriesBurned).toBe(200);
++    });
++
++    it('calculates metrics for 10,000 steps (full goal)', () => {
++      const metrics = calculateStepMetrics(10000, 10000);
++      expect(metrics.progressPercent).toBe(100);
++      expect(metrics.distanceKm).toBeCloseTo(7.62, 1);
++      expect(metrics.caloriesBurned).toBe(400);
++    });
++
++    it('clamps progressPercent to 100% when exceeding goal', () => {
++      const metrics = calculateStepMetrics(15000, 10000);
++      expect(metrics.progressPercent).toBe(100);
++      expect(metrics.distanceKm).toBeCloseTo(11.43, 1);
++      expect(metrics.caloriesBurned).toBe(600);
++    });
++  });
++
++  describe('ECG Waveform Synthesis', () => {
++    it('generates an array of ECG wave points of specified sample length', () => {
++      const points = generateECGWave(50, 72, 0);
++      expect(points).toHaveLength(50);
++    });
++
++    it('keeps ECG wave values bounded within [-1, 1]', () => {
++      const points = generateECGWave(100, 100, 0.5);
++      for (const val of points) {
++        expect(val).toBeGreaterThanOrEqual(-1);
++        expect(val).toBeLessThanOrEqual(1);
++      }
++    });
++
++    it('exhibits distinct peak near the QRS complex', () => {
++      const points = generateECGWave(60, 72, 0);
++      const maxVal = Math.max(...points);
++      expect(maxVal).toBeGreaterThan(0.6);
++    });
++  });
++
++  describe('Battery Life Estimation', () => {
++    it('calculates standard hours remaining based on percentage', () => {
++      const est100 = calculateBatteryEstimate(100, false);
++      expect(est100).toBe(48);
++
++      const est50 = calculateBatteryEstimate(50, false);
++      expect(est50).toBe(24);
++
++      const est0 = calculateBatteryEstimate(0, false);
++      expect(est0).toBe(0);
++    });
++
++    it('extends battery life by 1.75x in Eco Mode', () => {
++      const standardHours = calculateBatteryEstimate(80, false);
++      const ecoHours = calculateBatteryEstimate(80, true);
++      expect(ecoHours).toBeGreaterThan(standardHours);
++      expect(ecoHours).toBe(Math.round(standardHours * 1.75));
++    });
++  });
++
++  describe('Temperature Conversions', () => {
++    it('converts Celsius to Fahrenheit correctly', () => {
++      expect(celsiusToFahrenheit(0)).toBe(32);
++      expect(celsiusToFahrenheit(24)).toBe(75);
++      expect(celsiusToFahrenheit(100)).toBe(212);
++    });
++
++    it('converts Fahrenheit to Celsius correctly', () => {
++      expect(fahrenheitToCelsius(32)).toBe(0);
++      expect(fahrenheitToCelsius(75)).toBe(24);
++      expect(fahrenheitToCelsius(212)).toBe(100);
++    });
++  });
++
++  describe('Music Track Catalog', () => {
++    it('contains valid tracks with title, artist, and positive duration', () => {
++      expect(TRACK_LIST.length).toBeGreaterThanOrEqual(3);
++      for (const track of TRACK_LIST) {
++        expect(track.title).toBeTruthy();
++        expect(track.artist).toBeTruthy();
++        expect(track.durationSec).toBeGreaterThan(0);
++      }
++    });
++  });
++});
++
++describe('useWatchSimulator Hook State Management', () => {
++  it('initializes with default watch face and healthy baseline metrics', () => {
++    const { result } = renderHook(() => useWatchSimulator('minimal'));
++
++    expect(result.current.activeFace).toBe('minimal');
++    expect(result.current.activeWidget).toBe('heart_rate');
++    expect(result.current.heartRate).toBeGreaterThanOrEqual(65);
++    expect(result.current.heartRate).toBeLessThanOrEqual(80);
++    expect(result.current.stepCount).toBeGreaterThan(0);
++    expect(result.current.batteryLevel).toBe(86);
++    expect(result.current.isEcoMode).toBe(false);
++    expect(result.current.isCharging).toBe(false);
++  });
++
++  describe('Watch Face Switching', () => {
++    it('switches between all 4 supported watch faces', () => {
++      const { result } = renderHook(() => useWatchSimulator('minimal'));
++      const faces: WatchFaceId[] = ['minimal', 'neon', 'chrono', 'health'];
++
++      for (const face of faces) {
++        act(() => {
++          result.current.setActiveFace(face);
++        });
++        expect(result.current.activeFace).toBe(face);
++      }
++    });
++  });
++
++  describe('Active Widget Selection', () => {
++    it('switches active widget and allows closing drawer (null)', () => {
++      const { result } = renderHook(() => useWatchSimulator());
++      const widgets: (ActiveWidgetId | null)[] = [
++        'heart_rate',
++        'steps',
++        'weather',
++        'music',
++        'battery',
++        null,
++      ];
++
++      for (const widget of widgets) {
++        act(() => {
++          result.current.setActiveWidget(widget);
++        });
++        expect(result.current.activeWidget).toBe(widget);
++      }
++    });
++  });
++
++  describe('Heart Rate Measurement Simulation', () => {
++    it('updates heart rate within realistic 68 to 128 BPM bounds when measured', () => {
++      const { result } = renderHook(() => useWatchSimulator());
++
++      for (let i = 0; i < 5; i++) {
++        act(() => {
++          result.current.measureHeartRate();
++        });
++        expect(result.current.heartRate).toBeGreaterThanOrEqual(68);
++        expect(result.current.heartRate).toBeLessThanOrEqual(128);
++        expect(result.current.heartRateStatus).toMatch(/Resting|Elevated|Optimal|Normal/);
++      }
++    });
++  });
++
++  describe('Step Counter Simulation', () => {
++    it('increments step count by default +500 steps and updates metrics', () => {
++      const { result } = renderHook(() => useWatchSimulator());
++      const initialSteps = result.current.stepCount;
++
++      act(() => {
++        result.current.addSteps(500);
++      });
++
++      expect(result.current.stepCount).toBe(initialSteps + 500);
++      expect(result.current.stepMetrics.caloriesBurned).toBeGreaterThan(0);
++      expect(result.current.stepMetrics.distanceKm).toBeGreaterThan(0);
++    });
++
++    it('resets step count to 0', () => {
++      const { result } = renderHook(() => useWatchSimulator());
++
++      act(() => {
++        result.current.resetSteps();
++      });
++
++      expect(result.current.stepCount).toBe(0);
++      expect(result.current.stepMetrics.progressPercent).toBe(0);
++    });
++  });
++
++  describe('Battery State & Eco Mode Simulation', () => {
++    it('toggles charging state', () => {
++      const { result } = renderHook(() => useWatchSimulator());
++      expect(result.current.isCharging).toBe(false);
++
++      act(() => {
++        result.current.toggleCharging();
++      });
++      expect(result.current.isCharging).toBe(true);
++
++      act(() => {
++        result.current.toggleCharging();
++      });
++      expect(result.current.isCharging).toBe(false);
++    });
++
++    it('toggles eco mode and alters remaining hours estimate', () => {
++      const { result } = renderHook(() => useWatchSimulator());
++      expect(result.current.isEcoMode).toBe(false);
++      const normalHours = result.current.batteryEstimateHours;
++
++      act(() => {
++        result.current.toggleEcoMode();
++      });
++      expect(result.current.isEcoMode).toBe(true);
++      expect(result.current.batteryEstimateHours).toBeGreaterThan(normalHours);
++    });
++
++    it('clamps battery level between 0 and 100 on manual adjustments', () => {
++      const { result } = renderHook(() => useWatchSimulator());
++
++      act(() => {
++        result.current.setBatteryLevel(150);
++      });
++      expect(result.current.batteryLevel).toBe(100);
++
++      act(() => {
++        result.current.setBatteryLevel(-10);
++      });
++      expect(result.current.batteryLevel).toBe(0);
++    });
++  });
++
++  describe('Music Playback Simulation', () => {
++    it('toggles playback status', () => {
++      const { result } = renderHook(() => useWatchSimulator());
++      const initialPlaying = result.current.isPlayingMusic;
++
++      act(() => {
++        result.current.toggleMusicPlay();
++      });
++      expect(result.current.isPlayingMusic).toBe(!initialPlaying);
++    });
++
++    it('cycles next and previous tracks with wrap-around', () => {
++      const { result } = renderHook(() => useWatchSimulator());
++      const firstTrack = result.current.currentTrack;
++
++      act(() => {
++        result.current.nextTrack();
++      });
++      expect(result.current.currentTrack.title).not.toBe(firstTrack.title);
++
++      act(() => {
++        result.current.prevTrack();
++      });
++      expect(result.current.currentTrack.title).toBe(firstTrack.title);
++    });
++  });
++
++  describe('Weather Temperature Unit Simulation', () => {
++    it('toggles between Celsius and Fahrenheit', () => {
++      const { result } = renderHook(() => useWatchSimulator());
++      expect(result.current.isCelsius).toBe(true);
++
++      act(() => {
++        result.current.toggleWeatherUnit();
++      });
++      expect(result.current.isCelsius).toBe(false);
++
++      act(() => {
++        result.current.toggleWeatherUnit();
++      });
++      expect(result.current.isCelsius).toBe(true);
++    });
++  });
++});
++
++describe('Three.js Procedural Geometries (WatchGeometry)', () => {
++  it('creates Band Model with capsule chassis, screen, and continuous strap', () => {
++    const band = createBandModel({ caseColor: '#1E293B', strapColor: '#0F172A' });
++    expect(band).toBeInstanceOf(THREE.Group);
++    expect(band.name).toBe('BandModel');
++
++    const roles: string[] = [];
++    band.traverse((child) => {
++      if (child.userData?.role) {
++        roles.push(child.userData.role);
++      }
++    });
++
++    expect(roles).toContain('case');
++    expect(roles).toContain('screen');
++    expect(roles).toContain('strap');
++  });
++
++  it('creates Round Watch Model with case, bezel, screen, crown, and straps', () => {
++    const watch = createWatchRoundModel({ caseColor: '#CBD5E1', strapColor: '#94A3B8' });
++    expect(watch).toBeInstanceOf(THREE.Group);
++    expect(watch.name).toBe('WatchRoundModel');
++
++    const roles: string[] = [];
++    watch.traverse((child) => {
++      if (child.userData?.role) {
++        roles.push(child.userData.role);
++      }
++    });
++
++    expect(roles).toContain('case');
++    expect(roles).toContain('screen');
++    expect(roles).toContain('crown');
++    expect(roles).toContain('strap');
++  });
++
++  it('creates Squircle Watch Model with protective rim and crown guard', () => {
++    const squircle = createWatchSquircleModel({ caseColor: '#94A3B8', strapColor: '#0891B2' });
++    expect(squircle).toBeInstanceOf(THREE.Group);
++    expect(squircle.name).toBe('WatchSquircleModel');
++
++    const roles: string[] = [];
++    squircle.traverse((child) => {
++      if (child.userData?.role) {
++        roles.push(child.userData.role);
++      }
++    });
++
++    expect(roles).toContain('case');
++    expect(roles).toContain('screen');
++    expect(roles).toContain('crown');
++    expect(roles).toContain('strap');
++  });
++
++  it('creates model via factory function createWatchModel', () => {
++    const band = createWatchModel('band_capsule');
++    const round = createWatchModel('watch_round');
++    const squircle = createWatchModel('watch_squircle');
++
++    expect(band.name).toBe('BandModel');
++    expect(round.name).toBe('WatchRoundModel');
++    expect(squircle.name).toBe('WatchSquircleModel');
++  });
++
++  it('updates watch materials in real time without throwing', () => {
++    const watch = createWatchRoundModel();
++    expect(() => {
++      updateWatchMaterials(watch, {
++        caseColor: '#FF0000',
++        strapColor: '#00FF00',
++      });
++    }).not.toThrow();
++  });
++});
++
++describe('Watch Face Drawing Engine (WatchFaceRenderer)', () => {
++  const createMockContext = () => {
++    return {
++      fillStyle: '',
++      strokeStyle: '',
++      lineWidth: 1,
++      font: '',
++      textAlign: 'left',
++      textBaseline: 'top',
++      lineCap: 'butt',
++      lineJoin: 'miter',
++      shadowColor: '',
++      shadowBlur: 0,
++      fillRect: vi.fn(),
++      clearRect: vi.fn(),
++      beginPath: vi.fn(),
++      moveTo: vi.fn(),
++      lineTo: vi.fn(),
++      arc: vi.fn(),
++      fill: vi.fn(),
++      stroke: vi.fn(),
++      fillText: vi.fn(),
++      save: vi.fn(),
++      restore: vi.fn(),
++      translate: vi.fn(),
++      rotate: vi.fn(),
++      scale: vi.fn(),
++      roundRect: vi.fn(),
++      createRadialGradient: vi.fn(() => ({
++        addColorStop: vi.fn(),
++      })),
++      createLinearGradient: vi.fn(() => ({
++        addColorStop: vi.fn(),
++      })),
++    } as unknown as CanvasRenderingContext2D;
++  };
++
++  const dummyState = {
++    activeFace: 'minimal' as WatchFaceId,
++    setActiveFace: vi.fn(),
++    activeWidget: 'heart_rate' as ActiveWidgetId,
++    setActiveWidget: vi.fn(),
++    heartRate: 74,
++    isMeasuringHeartRate: false,
++    heartRateStatus: 'Normal Resting Rate',
++    measureHeartRate: vi.fn(),
++    stepCount: 6420,
++    stepGoal: 10000,
++    stepMetrics: { progressPercent: 64, distanceKm: 4.89, caloriesBurned: 257 },
++    addSteps: vi.fn(),
++    resetSteps: vi.fn(),
++    batteryLevel: 86,
++    setBatteryLevel: vi.fn(),
++    isCharging: false,
++    toggleCharging: vi.fn(),
++    isEcoMode: false,
++    toggleEcoMode: vi.fn(),
++    batteryEstimateHours: 41,
++    weather: {
++      tempC: 24,
++      condition: 'Sunny',
++      humidity: 48,
++      uvIndex: 5,
++      hourly: [],
++    },
++    isCelsius: true,
++    toggleWeatherUnit: vi.fn(),
++    currentTemperature: 24,
++    currentTrack: TRACK_LIST[0],
++    currentTrackIndex: 0,
++    isPlayingMusic: false,
++    toggleMusicPlay: vi.fn(),
++    nextTrack: vi.fn(),
++    prevTrack: vi.fn(),
++    musicProgressSec: 42,
++    equalizerBars: [20, 20, 20, 20, 20],
++  };
++
++  it('draws Minimal Face without errors', () => {
++    const ctx = createMockContext();
++    expect(() => drawMinimalFace(ctx, 512, new Date(), dummyState)).not.toThrow();
++    expect(ctx.fillRect).toHaveBeenCalled();
++    expect(ctx.fillText).toHaveBeenCalled();
++  });
++
++  it('draws Neon Face without errors', () => {
++    const ctx = createMockContext();
++    expect(() => drawNeonFace(ctx, 512, new Date(), dummyState)).not.toThrow();
++    expect(ctx.fillRect).toHaveBeenCalled();
++    expect(ctx.fillText).toHaveBeenCalled();
++  });
++
++  it('draws Chrono Face without errors', () => {
++    const ctx = createMockContext();
++    expect(() => drawChronoFace(ctx, 512, new Date(), dummyState)).not.toThrow();
++    expect(ctx.fillRect).toHaveBeenCalled();
++    expect(ctx.stroke).toHaveBeenCalled();
++  });
++
++  it('draws Health Face without errors', () => {
++    const ctx = createMockContext();
++    expect(() => drawHealthFace(ctx, 512, new Date(), dummyState)).not.toThrow();
++    expect(ctx.fillRect).toHaveBeenCalled();
++    expect(ctx.stroke).toHaveBeenCalled();
++  });
++
++  it('dispatches renderWatchFace for all face types', () => {
++    const mockCanvas = {
++      width: 512,
++      height: 512,
++      getContext: vi.fn(() => createMockContext()),
++    } as unknown as HTMLCanvasElement;
++
++    const faces: WatchFaceId[] = ['minimal', 'neon', 'chrono', 'health'];
++    for (const face of faces) {
++      expect(() => renderWatchFace(mockCanvas, face, new Date(), dummyState)).not.toThrow();
++    }
++  });
++});
++
++describe('WatchScreenTexture (WatchScreenManager)', () => {
++  it('instantiates and disposes without memory leaks', () => {
++    const manager = createWatchScreenManager(512);
++    expect(manager.texture).toBeInstanceOf(THREE.CanvasTexture);
++    expect(() => manager.dispose()).not.toThrow();
++  });
++});
++
++describe('Interactive Smart Widgets React Components', () => {
++  const dummyState = {
++    activeFace: 'minimal' as WatchFaceId,
++    setActiveFace: vi.fn(),
++    activeWidget: 'heart_rate' as ActiveWidgetId,
++    setActiveWidget: vi.fn(),
++    heartRate: 74,
++    isMeasuringHeartRate: false,
++    heartRateStatus: 'Normal Resting Rate',
++    measureHeartRate: vi.fn(),
++    stepCount: 6420,
++    stepGoal: 10000,
++    stepMetrics: { progressPercent: 64, distanceKm: 4.89, caloriesBurned: 257 },
++    addSteps: vi.fn(),
++    resetSteps: vi.fn(),
++    batteryLevel: 86,
++    setBatteryLevel: vi.fn(),
++    isCharging: false,
++    toggleCharging: vi.fn(),
++    isEcoMode: false,
++    toggleEcoMode: vi.fn(),
++    batteryEstimateHours: 41,
++    weather: {
++      tempC: 24,
++      condition: 'Sunny',
++      humidity: 48,
++      uvIndex: 5,
++      hourly: [
++        { time: 'Now', tempC: 24, condition: 'Sunny' },
++        { time: '14:00', tempC: 25, condition: 'Partly Cloudy' },
++      ],
++    },
++    isCelsius: true,
++    toggleWeatherUnit: vi.fn(),
++    currentTemperature: 24,
++    currentTrack: TRACK_LIST[0],
++    currentTrackIndex: 0,
++    isPlayingMusic: false,
++    toggleMusicPlay: vi.fn(),
++    nextTrack: vi.fn(),
++    prevTrack: vi.fn(),
++    musicProgressSec: 42,
++    equalizerBars: [20, 20, 20, 20, 20],
++  };
++
++  it('renders HeartRateWidget with pulse readings and measure button', () => {
++    render(React.createElement(HeartRateWidget, { simulator: dummyState }));
++    expect(screen.getByText('Heart Rate ECG')).toBeDefined();
++    expect(screen.getByText('74')).toBeDefined();
++    expect(screen.getByText('Normal Resting Rate')).toBeDefined();
++
++    const button = screen.getByText(/Measure Pulse Now/i);
++    fireEvent.click(button);
++    expect(dummyState.measureHeartRate).toHaveBeenCalled();
++  });
++
++  it('renders StepsWidget with step progress and add walk button', () => {
++    render(React.createElement(StepsWidget, { simulator: dummyState }));
++    expect(screen.getByText('Activity & Steps')).toBeDefined();
++    expect(screen.getByText('6,420')).toBeDefined();
++    expect(screen.getByText('4.89 km')).toBeDefined();
++    expect(screen.getByText('257 kcal')).toBeDefined();
++
++    const walkBtn = screen.getByText('+500 Steps Walk');
++    fireEvent.click(walkBtn);
++    expect(dummyState.addSteps).toHaveBeenCalledWith(500);
++  });
++
++  it('renders WeatherWidget with temperature and unit toggle', () => {
++    render(React.createElement(WeatherWidget, { simulator: dummyState }));
++    expect(screen.getByText('Weather & Forecast')).toBeDefined();
++    expect(screen.getByText('24')).toBeDefined();
++    expect(screen.getByText('Sunny')).toBeDefined();
++
++    const unitBtn = screen.getByTitle('Toggle Celsius / Fahrenheit');
++    fireEvent.click(unitBtn);
++    expect(dummyState.toggleWeatherUnit).toHaveBeenCalled();
++  });
++
++  it('renders MusicWidget with track info and playback controls', () => {
++    render(React.createElement(MusicWidget, { simulator: dummyState }));
++    expect(screen.getByText('Music Player')).toBeDefined();
++    expect(screen.getByText('Midnight Horizon')).toBeDefined();
++    expect(screen.getByText('Aura Sounds')).toBeDefined();
++
++    const playBtn = screen.getByTitle('Play');
++    fireEvent.click(playBtn);
++    expect(dummyState.toggleMusicPlay).toHaveBeenCalled();
++  });
++
++  it('renders BatteryWidget with charge status and eco mode button', () => {
++    render(React.createElement(BatteryWidget, { simulator: dummyState }));
++    expect(screen.getByText('Battery & Power')).toBeDefined();
++    expect(screen.getAllByText('86%').length).toBeGreaterThanOrEqual(1);
++
++    const ecoBtn = screen.getByText('Enable Eco Mode');
++    fireEvent.click(ecoBtn);
++    expect(dummyState.toggleEcoMode).toHaveBeenCalled();
++  });
++
++  it('renders StudioControls toolbar with face choices and preset triggers', () => {
++    const dummyColor: ColorOption = {
++      id: 'slate',
++      name: 'Slate Silver',
++      hex: '#CBD5E1',
++      caseHex: '#E2E8F0',
++      strapHex: '#94A3B8',
++    };
++    const onSelectFace = vi.fn();
++    const onSelectPreset = vi.fn();
++    const onToggleAutoRotate = vi.fn();
++    const onToggleDrawer = vi.fn();
++
++    render(
++      React.createElement(StudioControls, {
++        colors: [dummyColor],
++        selectedColor: dummyColor,
++        activeFace: 'minimal',
++        onSelectFace: onSelectFace,
++        activeCameraPreset: 'perspective',
++        onSelectCameraPreset: onSelectPreset,
++        isAutoRotating: false,
++        onToggleAutoRotate: onToggleAutoRotate,
++        isWidgetDrawerOpen: false,
++        onToggleWidgetDrawer: onToggleDrawer,
++      })
++    );
++
++    expect(screen.getByText('Minimal')).toBeDefined();
++    expect(screen.getByText('Neon Cyber')).toBeDefined();
++    expect(screen.getByText('Chrono Sub')).toBeDefined();
++    expect(screen.getByText('Health Rings')).toBeDefined();
++
++    const neonBtn = screen.getByText('Neon Cyber');
++    fireEvent.click(neonBtn);
++    expect(onSelectFace).toHaveBeenCalledWith('neon');
++
++    const frontBtn = screen.getByText('Front');
++    fireEvent.click(frontBtn);
++    expect(onSelectPreset).toHaveBeenCalledWith('front');
++  });
++});
