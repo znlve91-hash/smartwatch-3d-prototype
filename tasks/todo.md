@@ -5,14 +5,14 @@
 **Description:** Establish the domain foundation for the web prototype. Define all TypeScript models (Product, Category, Tier, ColorOption, WatchFaceId, CartItem, OrderDetails). Implement the mock catalog covering 5 devices across 2 categories (Band Standard, Band Pro, Watch Standard, Watch Pro, Watch Pro Max) with full technical specifications, pricing, and color options. Provide storage and currency formatting utilities, along with Vitest unit tests verifying taxonomy, product integrity, and filtering.
 
 **Acceptance criteria:**
-- [ ] Complete TypeScript interfaces exported from `src/types/index.ts`.
-- [ ] Mock catalog implemented in `src/data/products.ts` covering all 5 required tiers: Band Standard, Band Pro, Watch Standard, Watch Pro, and Watch Pro Max.
-- [ ] Helper utilities for currency formatting (`formatCurrency`) and safe local storage access (`storage.ts`).
-- [ ] Unit tests in `tests/products.test.ts` verifying 5 distinct models, color swatches, filter functions, and specs pass without error.
+- [x] Complete TypeScript interfaces exported from `src/types/index.ts`.
+- [x] Mock catalog implemented in `src/data/products.ts` covering all 5 required tiers: Band Standard, Band Pro, Watch Standard, Watch Pro, and Watch Pro Max.
+- [x] Helper utilities for currency formatting (`formatCurrency`) and safe local storage access (`storage.ts`).
+- [x] Unit tests in `tests/products.test.ts` verifying 5 distinct models, color swatches, filter functions, and specs pass without error.
 
 **Verification:**
-- [ ] Tests pass: `npm test tests/products.test.ts`
-- [ ] Build succeeds: `npm run build`
+- [x] Tests pass: `npm test tests/products.test.ts`
+- [x] Build succeeds: `npm run build`
 
 **Dependencies:** None
 
