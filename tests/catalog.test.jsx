@@ -1,4 +1,14 @@
 import { describe, it, expect } from 'vitest';
+import React from 'react';
+import { renderToString } from 'react-dom/server';
+import { Badge } from '../src/components/common/Badge.jsx';
+import { Header } from '../src/components/common/Header.jsx';
+import { Footer } from '../src/components/common/Footer.jsx';
+import { HeroSection } from '../src/components/hero/HeroSection.jsx';
+import { ProductFilter } from '../src/components/catalog/ProductFilter.jsx';
+import { ProductCard } from '../src/components/catalog/ProductCard.jsx';
+import { ProductGrid } from '../src/components/catalog/ProductGrid.jsx';
+import { ProductDetailModal } from '../src/components/catalog/ProductDetailModal.jsx';
 import {
   PRODUCTS,
   CATEGORIES,
@@ -375,3 +385,294 @@ describe('Formatting Utilities', () => {
     expect(formatDate(null)).toBe('');
   });
 });
+
+describe('Badge Component', () => {
+  it('should render category badge correctly', () => {
+    const html = renderToString(<Badge category="band" variant="category" />);
+    expect(html).toContain('Smart Band');
+
+    const htmlWatch = renderToString(<Badge category="watch" variant="category" />);
+    expect(htmlWatch).toContain('Smart Watch');
+  });
+
+  it('should render tier badge correctly', () => {
+    const htmlStandard = renderToString(<Badge tier="standard" variant="tier" />);
+    expect(htmlStandard).toContain('Standard');
+
+    const htmlPro = renderToString(<Badge tier="pro" variant="tier" />);
+    expect(htmlPro).toContain('Pro');
+
+    const htmlProMax = renderToString(<Badge tier="pro_max" variant="tier" />);
+    expect(htmlProMax).toContain('Pro Max');
+  });
+
+  it('should render combined category and tier badge', () => {
+    const html = renderToString(<Badge category="watch" tier="pro_max" variant="combined" />);
+    expect(html).toContain('WATCH');
+    expect(html).toContain('PRO MAX');
+  });
+
+  it('should render status variants like new, featured, and sale', () => {
+    const htmlNew = renderToString(<Badge variant="status">New Release</Badge>);
+    expect(htmlNew).toContain('New Release');
+
+    const htmlSale = renderToString(<Badge variant="sale">Save 20%</Badge>);
+    expect(htmlSale).toContain('Save 20%');
+  });
+
+  it('should accept custom className and children', () => {
+    const html = renderToString(<Badge className="custom-test-badge">Custom Content</Badge>);
+    expect(html).toContain('custom-test-badge');
+    expect(html).toContain('Custom Content');
+  });
+});
+
+describe('ProductFilter Component', () => {
+  it('should render category segmented controls for All, Bands, and Watches', () => {
+    const html = renderToString(
+      <ProductFilter
+        activeCategory="all"
+        activeTier="all"
+        onCategoryChange={() => {}}
+        onTierChange={() => {}}
+      />
+    );
+    expect(html).toContain('All Products');
+    expect(html).toContain('Smart Bands');
+    expect(html).toContain('Smart Watches');
+  });
+
+  it('should render tier options for all category including Pro Max', () => {
+    const html = renderToString(
+      <ProductFilter
+        activeCategory="all"
+        activeTier="all"
+        onCategoryChange={() => {}}
+        onTierChange={() => {}}
+      />
+    );
+    expect(html).toContain('All Tiers');
+    expect(html).toContain('Standard');
+    expect(html).toContain('Pro');
+    expect(html).toContain('Pro Max');
+  });
+
+  it('should omit Pro Max tier when category is band', () => {
+    const html = renderToString(
+      <ProductFilter
+        activeCategory="band"
+        activeTier="all"
+        onCategoryChange={() => {}}
+        onTierChange={() => {}}
+      />
+    );
+    expect(html).toContain('Standard');
+    expect(html).toContain('Pro');
+    expect(html).not.toContain('Pro Max');
+  });
+
+  it('should include Pro Max tier when category is watch', () => {
+    const html = renderToString(
+      <ProductFilter
+        activeCategory="watch"
+        activeTier="all"
+        onCategoryChange={() => {}}
+        onTierChange={() => {}}
+      />
+    );
+    expect(html).toContain('Standard');
+    expect(html).toContain('Pro');
+    expect(html).toContain('Pro Max');
+  });
+
+  it('should render search input and active state styles', () => {
+    const html = renderToString(
+      <ProductFilter
+        activeCategory="watch"
+        activeTier="pro"
+        searchQuery="Ultra"
+        onCategoryChange={() => {}}
+        onTierChange={() => {}}
+        onSearchChange={() => {}}
+      />
+    );
+    expect(html).toContain('Ultra');
+  });
+});
+
+describe('ProductCard Component', () => {
+  const sampleProduct = PRODUCTS.find((p) => p.id === 'novawatch-pro');
+
+  it('should render product name, tagline, and formatted price', () => {
+    const html = renderToString(<ProductCard product={sampleProduct} />);
+    expect(html).toContain(sampleProduct.name);
+    expect(html).toContain('Surgical stainless steel');
+    expect(html).toContain('$269.99');
+    expect(html).toContain('$299.99');
+  });
+
+  it('should render key specs in product card', () => {
+    const html = renderToString(<ProductCard product={sampleProduct} />);
+    expect(html).toContain('Sapphire Glass');
+    expect(html).toContain(sampleProduct.specs.batteryLife);
+    expect(html).toContain(sampleProduct.specs.waterResistance);
+  });
+
+  it('should render color swatches for each available color', () => {
+    const html = renderToString(<ProductCard product={sampleProduct} />);
+    sampleProduct.colors.forEach((color) => {
+      expect(html).toContain(color.name);
+    });
+  });
+
+  it('should render Try in 3D and Add to Cart action buttons', () => {
+    const html = renderToString(<ProductCard product={sampleProduct} />);
+    expect(html).toContain('Try in 3D');
+    expect(html).toContain('Add to Cart');
+  });
+
+  it('should render category and tier badge', () => {
+    const html = renderToString(<ProductCard product={sampleProduct} />);
+    expect(html).toContain('WATCH');
+    expect(html).toContain('PRO');
+  });
+});
+
+describe('ProductGrid Component', () => {
+  it('should render responsive grid of product cards', () => {
+    const testProducts = PRODUCTS.slice(0, 3);
+    const html = renderToString(<ProductGrid products={testProducts} />);
+    testProducts.forEach((p) => {
+      expect(html).toContain(p.name);
+    });
+    expect(html).toContain('Showing 3 Wearables');
+  });
+
+  it('should render empty state message when product list is empty', () => {
+    const html = renderToString(
+      <ProductGrid products={[]} onResetFilters={() => {}} />
+    );
+    expect(html).toContain('No wearables found');
+    expect(html).toContain('Reset Filters');
+  });
+});
+
+describe('Header Component', () => {
+  it('should render brand name NOVA WEARABLES', () => {
+    const html = renderToString(<Header />);
+    expect(html).toContain('NOVA WEARABLES');
+  });
+
+  it('should render category navigation tabs', () => {
+    const html = renderToString(<Header activeCategory="all" />);
+    expect(html).toContain('All Products');
+    expect(html).toContain('Smart Bands');
+    expect(html).toContain('Smart Watches');
+  });
+
+  it('should render cart button with badge count when items exist', () => {
+    const html = renderToString(<Header cartCount={3} />);
+    expect(html).toContain('3');
+  });
+
+  it('should render search bar trigger', () => {
+    const html = renderToString(<Header />);
+    expect(html).toContain('Search');
+  });
+});
+
+describe('Footer Component', () => {
+  it('should render brand name, guarantees, and copyright notice', () => {
+    const html = renderToString(<Footer />);
+    expect(html).toContain('NOVA WEARABLES');
+    expect(html).toContain('30-Day Returns');
+    expect(html).toContain('2-Year');
+    expect(html).toContain('2026 NOVA WEARABLES');
+  });
+});
+
+describe('HeroSection Component', () => {
+  it('should render hero title, CTA badges, and live spec highlights', () => {
+    const html = renderToString(<HeroSection />);
+    expect(html).toContain('The Future of Vitality');
+    expect(html).toContain('Interactive 3D Studio');
+    expect(html).toContain('Explore Catalog');
+    expect(html).toContain('watch-viewer-3d');
+  });
+});
+
+describe('ProductDetailModal Component', () => {
+  const sampleProduct = PRODUCTS.find((p) => p.id === 'novawatch-pro-max-ultra');
+
+  it('should return null when isOpen is false', () => {
+    const html = renderToString(
+      <ProductDetailModal isOpen={false} product={sampleProduct} onClose={() => {}} />
+    );
+    expect(html).toBe('');
+  });
+
+  it('should render full detail modal when isOpen is true', () => {
+    const html = renderToString(
+      <ProductDetailModal isOpen={true} product={sampleProduct} onClose={() => {}} />
+    );
+    expect(html).toContain(sampleProduct.name);
+    expect(html).toContain('Grade 5 Titanium');
+    expect(html).toContain('$429.99');
+    expect(html).toContain('Specifications');
+    expect(html).toContain(sampleProduct.specs.casingMaterial);
+    expect(html).toContain('Add to Cart');
+    expect(html).toContain('watch-viewer-3d');
+  });
+
+  it('should render sensors and features in detail modal', () => {
+    const html = renderToString(
+      <ProductDetailModal isOpen={true} product={sampleProduct} onClose={() => {}} />
+    );
+    sampleProduct.specs.sensors.forEach((sensor) => {
+      const escaped = sensor.replace(/&/g, '&amp;');
+      expect(html).toContain(escaped);
+    });
+    sampleProduct.features.forEach((feature) => {
+      const escaped = feature.replace(/&/g, '&amp;');
+      expect(html).toContain(escaped);
+    });
+  });
+
+  it('should render watch face choices in detail modal', () => {
+    const html = renderToString(
+      <ProductDetailModal isOpen={true} product={sampleProduct} onClose={() => {}} />
+    );
+    expect(html).toContain('Minimal');
+    expect(html).toContain('Neon');
+    expect(html).toContain('Chrono');
+    expect(html).toContain('Health');
+  });
+});
+
+describe('Integrated Catalog Filtering Logic', () => {
+  it('should correctly filter by band category and standard tier', () => {
+    const filtered = PRODUCTS.filter((p) => p.category === 'band' && p.tier === 'standard');
+    expect(filtered.length).toBeGreaterThanOrEqual(1);
+    expect(filtered.every((p) => p.category === 'band' && p.tier === 'standard')).toBe(true);
+  });
+
+  it('should correctly filter by watch category and pro_max tier', () => {
+    const filtered = PRODUCTS.filter((p) => p.category === 'watch' && p.tier === 'pro_max');
+    expect(filtered.length).toBe(1);
+    expect(filtered[0].id).toBe('novawatch-pro-max-ultra');
+  });
+
+  it('should filter correctly by search keyword', () => {
+    const query = 'Titanium';
+    const filtered = PRODUCTS.filter(
+      (p) =>
+        p.name.toLowerCase().includes(query.toLowerCase()) ||
+        p.tagline.toLowerCase().includes(query.toLowerCase()) ||
+        p.specs.casingMaterial.toLowerCase().includes(query.toLowerCase())
+    );
+    expect(filtered.length).toBeGreaterThanOrEqual(1);
+    expect(filtered.some((p) => p.id === 'novawatch-pro-max-ultra')).toBe(true);
+  });
+});
+
+
