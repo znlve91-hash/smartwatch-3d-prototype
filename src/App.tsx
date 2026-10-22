@@ -2,9 +2,7 @@ import React, { useState } from 'react';
 import {
   Sparkles,
   ShoppingBag,
-  Palette,
   Check,
-  Watch,
   Sliders,
   Layers,
   ArrowRight,

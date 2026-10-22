@@ -174,6 +174,13 @@ export class SceneManager {
   }
 
   /**
+   * Sets or updates the animation render frame callback.
+   */
+  public setOnRenderFrame(callback?: (timeMs: number) => void): void {
+    this.onRenderFrameCallback = callback;
+  }
+
+  /**
    * Toggles turntable auto-rotation.
    */
   public setAutoRotate(enabled: boolean): void {

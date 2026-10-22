@@ -66,6 +66,23 @@ export const WatchViewer3D: React.FC<WatchViewer3DProps> = ({ className = '' }) 
     [selectedWatchFace, simulatedWidgets, isBand]
   );
 
+  // Store latest values in ref to prevent stale closures in animation render frame callback
+  const latestRef = useRef({
+    selectedWatchFace,
+    simulatedWidgets,
+    isBand,
+    updateFaceCanvas,
+  });
+
+  useEffect(() => {
+    latestRef.current = {
+      selectedWatchFace,
+      simulatedWidgets,
+      isBand,
+      updateFaceCanvas,
+    };
+  }, [selectedWatchFace, simulatedWidgets, isBand, updateFaceCanvas]);
+
   // 1. Initialize SceneManager and Offscreen CanvasTexture
   useEffect(() => {
     if (!containerRef.current) return;
@@ -93,17 +110,23 @@ export const WatchViewer3D: React.FC<WatchViewer3DProps> = ({ className = '' }) 
         container: containerRef.current,
         initialPreset: 'angle',
         onRenderFrame: (timeMs) => {
+          const {
+            selectedWatchFace: currentFace,
+            simulatedWidgets: currentWidgets,
+            updateFaceCanvas: currentUpdateFaceCanvas,
+          } = latestRef.current;
+
           // Smoothly animate watch face telemetry:
           // Health ECG waves and pulsating measuring heart rate update at ~30 FPS;
           // static faces update at ~2 FPS to conserve GPU cycles.
           const isHighRate =
-            selectedWatchFace === 'health' ||
-            selectedWatchFace === 'neon' ||
-            simulatedWidgets.isMeasuringHeartRate;
+            currentFace === 'health' ||
+            currentFace === 'neon' ||
+            currentWidgets.isMeasuringHeartRate;
           const threshold = isHighRate ? 33 : 500;
 
           if (timeMs - lastFaceUpdate > threshold) {
-            updateFaceCanvas(undefined, timeMs);
+            currentUpdateFaceCanvas(undefined, timeMs);
             lastFaceUpdate = timeMs;
           }
         },
