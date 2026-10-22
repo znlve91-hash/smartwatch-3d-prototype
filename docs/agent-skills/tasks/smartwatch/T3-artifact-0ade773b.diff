@@ -1,0 +1,2168 @@
+# Review package: T3-artifact
+mode: worktree against base 65eb6fe600f11cf147acdf14fbb2bb8384a22fe1
+artifact-hash: 0ade773bf6b91ef32807f6f7554232dc9d612879
+files-changed: 12
+
+## Stat
+ postcss.config.js                          |   6 +
+ src/components/catalog/ComparisonModal.tsx | 278 ++++++++++++++
+ src/components/catalog/FilterTabs.tsx      | 146 ++++++++
+ src/components/catalog/ProductCard.tsx     | 282 +++++++++++++++
+ src/components/catalog/ProductCatalog.tsx  | 236 ++++++++++++
+ src/components/common/Badge.tsx            |  92 +++++
+ src/components/common/Button.tsx           | 108 ++++++
+ src/components/layout/Footer.tsx           | 151 ++++++++
+ src/components/layout/Navbar.tsx           | 171 +++++++++
+ src/index.css                              |  20 ++
+ tailwind.config.js                         |  28 ++
+ tests/catalog.test.ts                      | 557 +++++++++++++++++++++++++++++
+ 12 files changed, 2075 insertions(+)
+
+## Diff
+diff --git a/postcss.config.js b/postcss.config.js
+new file mode 100644
+index 0000000..2aa7205
+--- /dev/null
++++ b/postcss.config.js
+@@ -0,0 +1,6 @@
++export default {
++  plugins: {
++    tailwindcss: {},
++    autoprefixer: {},
++  },
++};
+diff --git a/src/components/catalog/ComparisonModal.tsx b/src/components/catalog/ComparisonModal.tsx
+new file mode 100644
+index 0000000..d6cddef
+--- /dev/null
++++ b/src/components/catalog/ComparisonModal.tsx
+@@ -0,0 +1,278 @@
++import React, { useEffect } from 'react';
++import { X, Eye, Trash2, ArrowLeftRight, Check, AlertCircle } from 'lucide-react';
++import { Product } from '../../types';
++import { formatCurrency, formatTierName } from '../../utils/formatters';
++import { Badge } from '../common/Badge';
++import { Button } from '../common/Button';
++import { useViewer } from '../../context/ViewerContext';
++
++export interface SpecDimension {
++  id: string;
++  label: string;
++  getValue: (product: Product) => string | React.ReactNode;
++}
++
++export const COMPARISON_DIMENSIONS: SpecDimension[] = [
++  { id: 'display', label: 'Display', getValue: (p) => p.specs.display },
++  { id: 'battery', label: 'Battery Life', getValue: (p) => p.specs.batteryLife },
++  { id: 'waterResistance', label: 'Water Resistance', getValue: (p) => p.specs.waterResistance },
++  {
++    id: 'sensors',
++    label: 'Sensors',
++    getValue: (p) => p.specs.sensors.join(', '),
++  },
++  { id: 'weight', label: 'Weight', getValue: (p) => p.specs.weight },
++  { id: 'casing', label: 'Casing Material', getValue: (p) => p.specs.casingMaterial },
++  { id: 'connectivity', label: 'Connectivity', getValue: (p) => p.specs.connectivity },
++  { id: 'price', label: 'Price', getValue: (p) => formatCurrency(p.price) },
++];
++
++export interface ComparisonModalProps {
++  isOpen: boolean;
++  onClose: () => void;
++  products: Product[];
++  onRemoveProduct?: (productId: string) => void;
++  onClearAll?: () => void;
++  onPreviewIn3D?: (productId: string) => void;
++}
++
++function useSafeViewer() {
++  try {
++    return useViewer();
++  } catch {
++    return null;
++  }
++}
++
++export const ComparisonModal: React.FC<ComparisonModalProps> = ({
++  isOpen,
++  onClose,
++  products,
++  onRemoveProduct,
++  onClearAll,
++  onPreviewIn3D,
++}) => {
++  const viewer = useSafeViewer();
++
++  // Close on Escape key
++  useEffect(() => {
++    if (!isOpen) return;
++
++    const handleKeyDown = (e: KeyboardEvent) => {
++      if (e.key === 'Escape') {
++        onClose();
++      }
++    };
++
++    window.addEventListener('keydown', handleKeyDown);
++    return () => window.removeEventListener('keydown', handleKeyDown);
++  }, [isOpen, onClose]);
++
++  if (!isOpen) return null;
++
++  // Max 3 products compared
++  const activeProducts = products.slice(0, 3);
++
++  const handlePreview = (productId: string) => {
++    if (viewer?.setSelectedProductId) {
++      viewer.setSelectedProductId(productId);
++    }
++    if (onPreviewIn3D) {
++      onPreviewIn3D(productId);
++    }
++  };
++
++  return (
++    <div
++      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 lg:p-8 animate-in fade-in duration-200"
++      role="dialog"
++      aria-modal="true"
++      aria-labelledby="comparison-modal-title"
++    >
++      {/* Backdrop */}
++      <div
++        className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity"
++        onClick={onClose}
++        aria-hidden="true"
++      />
++
++      {/* Modal Dialog Card */}
++      <div className="relative z-10 w-full max-w-5xl max-h-[90vh] flex flex-col rounded-3xl bg-white shadow-2xl border border-purple-100 overflow-hidden">
++        {/* Header Bar */}
++        <div className="flex items-center justify-between px-6 py-5 border-b border-purple-100/80 bg-[#F8F6FF]/60">
++          <div className="flex items-center gap-3">
++            <div className="flex items-center justify-center w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#7C3AED] to-[#06B6D4] text-white shadow-md shadow-purple-500/20">
++              <ArrowLeftRight className="w-5 h-5 text-white" />
++            </div>
++            <div>
++              <h2 id="comparison-modal-title" className="text-lg font-bold text-slate-900">
++                Device Specification Comparison
++              </h2>
++              <p className="text-xs text-slate-500">
++                Side-by-side comparison across 8 technical dimensions (Up to 3 devices).
++              </p>
++            </div>
++          </div>
++
++          <div className="flex items-center gap-2">
++            {activeProducts.length > 0 && onClearAll && (
++              <button
++                onClick={onClearAll}
++                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-rose-600 hover:bg-rose-50 border border-rose-200 transition-colors"
++              >
++                <Trash2 className="w-3.5 h-3.5" />
++                Clear All
++              </button>
++            )}
++
++            <button
++              onClick={onClose}
++              className="p-2 rounded-full text-slate-400 hover:text-slate-700 hover:bg-purple-100/60 transition-colors focus:outline-none"
++              aria-label="Close Comparison"
++            >
++              <X className="w-5 h-5" />
++            </button>
++          </div>
++        </div>
++
++        {/* Content Area */}
++        <div className="flex-1 overflow-auto p-6">
++          {activeProducts.length === 0 ? (
++            /* Empty State */
++            <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
++              <div className="flex items-center justify-center w-16 h-16 rounded-3xl bg-purple-50 text-[#7C3AED] mb-4 border border-purple-100">
++                <AlertCircle className="w-8 h-8" />
++              </div>
++              <h3 className="text-base font-bold text-slate-900">
++                No devices selected for comparison
++              </h3>
++              <p className="text-xs text-slate-500 max-w-md mt-1 mb-6 leading-relaxed">
++                Select up to 3 devices from the catalog to compare specifications side-by-side across display, battery life, sensors, and water resistance.
++              </p>
++              <Button onClick={onClose} variant="primary" size="sm">
++                Return to Product Catalog
++              </Button>
++            </div>
++          ) : (
++            <div className="min-w-[600px]">
++              {/* Product Card Headers in Grid */}
++              <div
++                className="grid gap-4 pb-6 border-b border-purple-100"
++                style={{
++                  gridTemplateColumns: `200px repeat(${activeProducts.length}, 1fr)`,
++                }}
++              >
++                {/* Empty corner label */}
++                <div className="flex flex-col justify-end p-2">
++                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
++                    Technical Specs
++                  </span>
++                  <span className="text-[11px] text-slate-400">8 key dimensions</span>
++                </div>
++
++                {/* Device Columns */}
++                {activeProducts.map((p) => {
++                  const isViewerActive = viewer?.selectedProductId === p.id;
++
++                  return (
++                    <div
++                      key={p.id}
++                      className={`relative flex flex-col justify-between p-4 rounded-2xl border transition-all ${
++                        isViewerActive
++                          ? 'bg-purple-50/60 border-[#7C3AED] shadow-sm'
++                          : 'bg-[#F8F6FF]/40 border-purple-100'
++                      }`}
++                    >
++                      {/* Remove from comparison */}
++                      {onRemoveProduct && (
++                        <button
++                          onClick={() => onRemoveProduct(p.id)}
++                          className="absolute top-2 right-2 p-1.5 rounded-full text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
++                          aria-label={`Remove ${p.name} from comparison`}
++                        >
++                          <X className="w-4 h-4" />
++                        </button>
++                      )}
++
++                      <div>
++                        <div className="flex items-center gap-1.5 mb-2">
++                          <Badge variant="neutral" size="sm">
++                            {formatTierName(p.tier)}
++                          </Badge>
++                          {p.badge && (
++                            <Badge variant="softCyan" size="sm">
++                              {p.badge}
++                            </Badge>
++                          )}
++                        </div>
++
++                        <h4 className="text-sm font-bold text-slate-900 pr-6">{p.name}</h4>
++                        <div className="text-base font-black text-slate-900 mt-1">
++                          {formatCurrency(p.price)}
++                        </div>
++                      </div>
++
++                      {/* Preview Action */}
++                      <div className="mt-4 pt-3 border-t border-purple-100/60">
++                        <Button
++                          onClick={() => handlePreview(p.id)}
++                          variant={isViewerActive ? 'cyan' : 'outline'}
++                          size="xs"
++                          fullWidth
++                          icon={<Eye className="w-3.5 h-3.5" />}
++                        >
++                          {isViewerActive ? 'Active in 3D' : 'Preview in 3D'}
++                        </Button>
++                      </div>
++                    </div>
++                  );
++                })}
++              </div>
++
++              {/* Specification Rows */}
++              <div className="divide-y divide-purple-100/60">
++                {COMPARISON_DIMENSIONS.map((dim, idx) => (
++                  <div
++                    key={dim.id}
++                    className={`grid items-center gap-4 py-3.5 px-2 rounded-xl transition-colors ${
++                      idx % 2 === 0 ? 'bg-purple-50/20' : 'bg-transparent'
++                    }`}
++                    style={{
++                      gridTemplateColumns: `200px repeat(${activeProducts.length}, 1fr)`,
++                    }}
++                  >
++                    {/* Dimension Label */}
++                    <div className="text-xs font-bold text-slate-700">{dim.label}</div>
++
++                    {/* Values per product */}
++                    {activeProducts.map((p) => {
++                      const val = dim.getValue(p);
++                      return (
++                        <div
++                          key={`${p.id}-${dim.id}`}
++                          className="text-xs text-slate-600 leading-relaxed font-medium"
++                        >
++                          {val}
++                        </div>
++                      );
++                    })}
++                  </div>
++                ))}
++              </div>
++            </div>
++          )}
++        </div>
++
++        {/* Footer */}
++        <div className="flex items-center justify-between px-6 py-4 bg-[#F8F6FF]/60 border-t border-purple-100/80">
++          <span className="text-xs text-slate-500">
++            Comparing {activeProducts.length} of 3 maximum devices
++          </span>
++          <Button onClick={onClose} variant="secondary" size="sm">
++            Close
++          </Button>
++        </div>
++      </div>
++    </div>
++  );
++};
+diff --git a/src/components/catalog/FilterTabs.tsx b/src/components/catalog/FilterTabs.tsx
+new file mode 100644
+index 0000000..ecd255e
+--- /dev/null
++++ b/src/components/catalog/FilterTabs.tsx
+@@ -0,0 +1,146 @@
++import React from 'react';
++import { ProductCategory, ProductTier, Product } from '../../types';
++import { formatTierName } from '../../utils/formatters';
++
++export type AvailableTierOption = ProductTier | 'all';
++
++export interface FilterCounts {
++  total?: number;
++  band?: number;
++  watch?: number;
++  standard?: number;
++  pro?: number;
++  pro_max?: number;
++  [key: string]: number | undefined;
++}
++
++export interface FilterTabsProps {
++  selectedCategory: ProductCategory | 'all';
++  onCategoryChange: (category: ProductCategory | 'all') => void;
++  selectedTier: AvailableTierOption;
++  onTierChange: (tier: AvailableTierOption) => void;
++  counts?: FilterCounts;
++  className?: string;
++}
++
++/**
++ * Returns available tiers for the selected category.
++ * Band only supports standard and pro.
++ * Watch supports standard, pro, and pro_max.
++ * All supports all tiers.
++ */
++export function getAvailableTiersForCategory(category: ProductCategory | 'all'): AvailableTierOption[] {
++  if (category === 'band') {
++    return ['all', 'standard', 'pro'];
++  }
++  return ['all', 'standard', 'pro', 'pro_max'];
++}
++
++/**
++ * Filters a list of products by category and hardware tier.
++ */
++export function filterProducts(
++  productsList: Product[],
++  category: ProductCategory | 'all',
++  tier: AvailableTierOption
++): Product[] {
++  return productsList.filter((product) => {
++    const matchCategory = category === 'all' || product.category === category;
++    const matchTier = tier === 'all' || product.tier === tier;
++    return matchCategory && matchTier;
++  });
++}
++
++const CATEGORY_OPTIONS: { id: ProductCategory | 'all'; label: string }[] = [
++  { id: 'all', label: 'All Devices' },
++  { id: 'band', label: 'Fitness Bands' },
++  { id: 'watch', label: 'Smart Watches' },
++];
++
++export const FilterTabs: React.FC<FilterTabsProps> = ({
++  selectedCategory,
++  onCategoryChange,
++  selectedTier,
++  onTierChange,
++  counts,
++  className = '',
++}) => {
++  const availableTiers = getAvailableTiersForCategory(selectedCategory);
++
++  const handleCategorySelect = (cat: ProductCategory | 'all') => {
++    onCategoryChange(cat);
++    // If the currently selected tier is not available in the new category, reset to 'all'
++    const nextAvailableTiers = getAvailableTiersForCategory(cat);
++    if (!nextAvailableTiers.includes(selectedTier)) {
++      onTierChange('all');
++    }
++  };
++
++  return (
++    <div className={`flex flex-col gap-4 ${className}`}>
++      {/* Category Pills Bar */}
++      <div className="flex flex-wrap items-center justify-between gap-3">
++        <div className="inline-flex p-1.5 rounded-2xl bg-white/80 backdrop-blur-md border border-purple-100/80 shadow-sm">
++          {CATEGORY_OPTIONS.map((cat) => {
++            const isActive = selectedCategory === cat.id;
++            const countValue = counts
++              ? cat.id === 'all'
++                ? counts.total
++                : counts[cat.id]
++              : undefined;
++
++            return (
++              <button
++                key={cat.id}
++                onClick={() => handleCategorySelect(cat.id)}
++                className={`relative flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 select-none ${
++                  isActive
++                    ? 'bg-[#7C3AED] text-white shadow-md shadow-purple-500/25'
++                    : 'text-slate-600 hover:text-slate-900 hover:bg-purple-50/60'
++                }`}
++              >
++                <span>{cat.label}</span>
++                {typeof countValue === 'number' && (
++                  <span
++                    className={`inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold rounded-full transition-colors ${
++                      isActive
++                        ? 'bg-white/20 text-white'
++                        : 'bg-purple-100/70 text-[#7C3AED]'
++                    }`}
++                  >
++                    {countValue}
++                  </span>
++                )}
++              </button>
++            );
++          })}
++        </div>
++
++        {/* Available hardware tier quick filters */}
++        <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-2xl bg-white/80 backdrop-blur-md border border-purple-100/80 shadow-sm">
++          <span className="px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-400">
++            Tier:
++          </span>
++          {availableTiers.map((t) => {
++            const isTierActive = selectedTier === t;
++            const tierLabel = t === 'all' ? 'All Tiers' : formatTierName(t);
++
++            return (
++              <button
++                key={t}
++                onClick={() => onTierChange(t)}
++                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all duration-150 select-none ${
++                  isTierActive
++                    ? 'bg-gradient-to-r from-[#7C3AED] to-[#06B6D4] text-white shadow-sm shadow-purple-500/20'
++                    : 'text-slate-600 hover:text-[#7C3AED] hover:bg-purple-50/60'
++                }`}
++              >
++                {tierLabel}
++              </button>
++            );
++          })}
++        </div>
++      </div>
++    </div>
++  );
++};
+diff --git a/src/components/catalog/ProductCard.tsx b/src/components/catalog/ProductCard.tsx
+new file mode 100644
+index 0000000..194024a
+--- /dev/null
++++ b/src/components/catalog/ProductCard.tsx
+@@ -0,0 +1,282 @@
++import React from 'react';
++import {
++  Battery,
++  Droplets,
++  Eye,
++  Sparkles,
++  Star,
++  Check,
++  ArrowLeftRight,
++  Smartphone,
++  CheckCircle2,
++} from 'lucide-react';
++import { Product } from '../../types';
++import { formatCurrency, formatRating, formatTierName } from '../../utils/formatters';
++import { Badge } from '../common/Badge';
++import { Button } from '../common/Button';
++import { useViewer } from '../../context/ViewerContext';
++
++export interface ProductCardProps {
++  product: Product;
++  isCompared?: boolean;
++  onToggleCompare?: (product: Product) => void;
++  disableCompare?: boolean;
++  onPreviewIn3D?: (product: Product) => void;
++  onAddToCart?: (product: Product) => void;
++  className?: string;
++}
++
++function useSafeViewer() {
++  try {
++    return useViewer();
++  } catch {
++    return null;
++  }
++}
++
++export const ProductCard: React.FC<ProductCardProps> = ({
++  product,
++  isCompared = false,
++  onToggleCompare,
++  disableCompare = false,
++  onPreviewIn3D,
++  onAddToCart,
++  className = '',
++}) => {
++  const viewer = useSafeViewer();
++  const isCurrentlyActiveInViewer = viewer?.selectedProductId === product.id;
++
++  const handlePreviewIn3D = (e?: React.MouseEvent) => {
++    if (e) e.stopPropagation();
++    if (viewer?.setSelectedProductId) {
++      viewer.setSelectedProductId(product.id);
++    }
++    if (onPreviewIn3D) {
++      onPreviewIn3D(product);
++    }
++  };
++
++  const handleToggleCompare = (e?: React.MouseEvent) => {
++    if (e) e.stopPropagation();
++    if (onToggleCompare) {
++      onToggleCompare(product);
++    }
++  };
++
++  const handleAddToCart = (e?: React.MouseEvent) => {
++    if (e) e.stopPropagation();
++    if (onAddToCart) {
++      onAddToCart(product);
++    }
++  };
++
++  // Determine badge style
++  const getBadgeVariant = () => {
++    if (product.badge === 'Sale') return 'sale';
++    if (product.badge === 'Flagship') return 'violet';
++    if (product.badge === 'Best Value') return 'softCyan';
++    if (product.tier === 'pro_max') return 'violet';
++    if (product.tier === 'pro') return 'cyan';
++    return 'neutral';
++  };
++
++  return (
++    <div
++      className={`group relative flex flex-col justify-between rounded-3xl bg-white/90 backdrop-blur-md border transition-all duration-300 p-5 sm:p-6 shadow-sm hover:shadow-xl hover:shadow-purple-500/10 ${
++        isCurrentlyActiveInViewer
++          ? 'border-[#7C3AED] ring-2 ring-purple-400/30'
++          : 'border-purple-100/80 hover:border-purple-300'
++      } ${className}`}
++    >
++      {/* Top Meta: Badges & Compare Toggle */}
++      <div className="flex items-center justify-between gap-2 mb-4">
++        <div className="flex items-center flex-wrap gap-1.5">
++          {product.badge && (
++            <Badge variant={getBadgeVariant()} size="sm" dot>
++              {product.badge}
++            </Badge>
++          )}
++          <Badge variant="neutral" size="sm">
++            {formatTierName(product.tier)}
++          </Badge>
++        </div>
++
++        {/* Compare Checkbox / Button */}
++        <button
++          type="button"
++          onClick={handleToggleCompare}
++          disabled={disableCompare && !isCompared}
++          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-all select-none ${
++            isCompared
++              ? 'bg-[#7C3AED] text-white shadow-sm'
++              : disableCompare
++              ? 'opacity-40 cursor-not-allowed bg-slate-100 text-slate-400'
++              : 'text-slate-500 hover:text-[#7C3AED] bg-purple-50/60 hover:bg-purple-100/80'
++          }`}
++          aria-label={isCompared ? `Remove ${product.name} from comparison` : `Compare ${product.name}`}
++          aria-pressed={isCompared}
++        >
++          {isCompared ? (
++            <>
++              <Check className="w-3.5 h-3.5 stroke-[2.5]" />
++              <span>Compared</span>
++            </>
++          ) : (
++            <>
++              <ArrowLeftRight className="w-3.5 h-3.5" />
++              <span>Compare</span>
++            </>
++          )}
++        </button>
++      </div>
++
++      {/* Visual Product Showcase Placeholder / Active 3D Badge */}
++      <div className="relative flex flex-col items-center justify-center py-6 px-4 mb-4 rounded-2xl bg-gradient-to-b from-[#F8F6FF] to-white/60 border border-purple-50 group-hover:border-purple-100 transition-colors">
++        {/* Device Icon Graphic Representation */}
++        <div className="relative flex items-center justify-center w-24 h-24 mb-2">
++          {/* Subtle glowing backdrop halo */}
++          <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-[#7C3AED]/10 to-[#06B6D4]/15 blur-lg group-hover:scale-110 transition-transform" />
++          <div
++            className={`relative flex items-center justify-center w-20 h-20 rounded-2xl shadow-inner transition-transform duration-300 group-hover:scale-105 ${
++              product.category === 'band'
++                ? 'w-12 h-20 rounded-full border-2 border-slate-700/60 bg-slate-900/90'
++                : 'w-20 h-20 rounded-3xl border-2 border-slate-700/60 bg-slate-900/90'
++            }`}
++          >
++            <div className="flex flex-col items-center text-center p-1">
++              <span className="text-[10px] font-black tracking-widest text-[#06B6D4]">
++                {product.category.toUpperCase()}
++              </span>
++              <span className="text-[9px] font-bold text-slate-300">
++                {product.tier.toUpperCase()}
++              </span>
++            </div>
++          </div>
++        </div>
++
++        {isCurrentlyActiveInViewer && (
++          <div className="absolute top-2 right-2">
++            <Badge variant="violet" size="sm" dot pulse>
++              Live in 3D
++            </Badge>
++          </div>
++        )}
++
++        {/* Rating and review counter */}
++        <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-1">
++          <div className="flex items-center text-amber-500">
++            <Star className="w-3.5 h-3.5 fill-current" />
++          </div>
++          <span className="font-bold text-slate-800">{formatRating(product.rating)}</span>
++          <span className="text-slate-400">({product.reviewsCount})</span>
++        </div>
++      </div>
++
++      {/* Product Details Header */}
++      <div className="flex flex-col mb-4">
++        <h3 className="text-base sm:text-lg font-bold text-slate-900 group-hover:text-[#7C3AED] transition-colors line-clamp-1">
++          {product.name}
++        </h3>
++        <p className="text-xs text-slate-500 line-clamp-2 mt-0.5 leading-relaxed min-h-[32px]">
++          {product.tagline}
++        </p>
++
++        {/* Pricing */}
++        <div className="flex items-baseline gap-2 mt-2">
++          <span className="text-xl font-black text-slate-900">
++            {formatCurrency(product.price)}
++          </span>
++          {product.originalPrice && (
++            <span className="text-xs font-semibold line-through text-slate-400">
++              {formatCurrency(product.originalPrice)}
++            </span>
++          )}
++          {product.originalPrice && (
++            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">
++              Save {formatCurrency(product.originalPrice - product.price)}
++            </span>
++          )}
++        </div>
++      </div>
++
++      {/* Key Spec Pills (Battery, Water Resistance, Display) */}
++      <div className="grid grid-cols-1 gap-2 mb-4 p-3 rounded-2xl bg-purple-50/40 border border-purple-100/50 text-xs text-slate-600">
++        <div className="flex items-center gap-2">
++          <Smartphone className="w-3.5 h-3.5 text-purple-600 shrink-0" />
++          <span className="font-medium text-slate-800 truncate" title={product.specs.display}>
++            {product.specs.display}
++          </span>
++        </div>
++        <div className="flex items-center justify-between gap-2">
++          <div className="flex items-center gap-2 truncate">
++            <Battery className="w-3.5 h-3.5 text-[#7C3AED] shrink-0" />
++            <span className="truncate">{product.specs.batteryLife}</span>
++          </div>
++          <div className="flex items-center gap-1.5 text-cyan-700 shrink-0 font-medium">
++            <Droplets className="w-3.5 h-3.5 text-[#06B6D4]" />
++            <span>{product.specs.waterResistance}</span>
++          </div>
++        </div>
++      </div>
++
++      {/* Color Swatches (Chassis & Straps) */}
++      <div className="flex items-center justify-between gap-2 mb-5 px-1 py-1 text-xs">
++        {/* Chassis swatches */}
++        <div className="flex items-center gap-1.5">
++          <span className="text-[11px] font-semibold text-slate-400">Chassis:</span>
++          <div className="flex items-center -space-x-1">
++            {product.chassisColors.map((color) => (
++              <span
++                key={color.id}
++                title={`${color.name} (${color.hex})`}
++                className="inline-block w-4 h-4 rounded-full border-2 border-white shadow-sm ring-1 ring-slate-200 transition-transform hover:scale-125 hover:z-10"
++                style={{ backgroundColor: color.hex }}
++              />
++            ))}
++          </div>
++        </div>
++
++        {/* Strap swatches */}
++        <div className="flex items-center gap-1.5">
++          <span className="text-[11px] font-semibold text-slate-400">Straps:</span>
++          <div className="flex items-center -space-x-1">
++            {product.strapColors.map((color) => (
++              <span
++                key={color.id}
++                title={`${color.name} (${color.hex})`}
++                className="inline-block w-4 h-4 rounded-full border-2 border-white shadow-sm ring-1 ring-slate-200 transition-transform hover:scale-125 hover:z-10"
++                style={{ backgroundColor: color.hex }}
++              />
++            ))}
++          </div>
++        </div>
++      </div>
++
++      {/* Bottom Actions: Preview in 3D & Quick Add */}
++      <div className="flex items-center gap-2 pt-2 border-t border-purple-100/60">
++        <Button
++          onClick={handlePreviewIn3D}
++          variant={isCurrentlyActiveInViewer ? 'cyan' : 'primary'}
++          size="sm"
++          fullWidth
++          icon={isCurrentlyActiveInViewer ? <CheckCircle2 className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
++          className="shadow-sm"
++        >
++          {isCurrentlyActiveInViewer ? 'Viewing in 3D' : 'Preview in 3D'}
++        </Button>
++
++        {onAddToCart && (
++          <Button
++            onClick={handleAddToCart}
++            variant="outline"
++            size="sm"
++            aria-label={`Add ${product.name} to cart`}
++            className="px-3"
++          >
++            Add
++          </Button>
++        )}
++      </div>
++    </div>
++  );
++};
+diff --git a/src/components/catalog/ProductCatalog.tsx b/src/components/catalog/ProductCatalog.tsx
+new file mode 100644
+index 0000000..fc03ca2
+--- /dev/null
++++ b/src/components/catalog/ProductCatalog.tsx
+@@ -0,0 +1,236 @@
++import React, { useState, useMemo } from 'react';
++import { ArrowLeftRight, X, Sparkles, Filter, Layers } from 'lucide-react';
++import { ProductCategory, Product } from '../../types';
++import { PRODUCTS } from '../../data/products';
++import { FilterTabs, filterProducts, AvailableTierOption } from './FilterTabs';
++import { ProductCard } from './ProductCard';
++import { ComparisonModal } from './ComparisonModal';
++import { Button } from '../common/Button';
++import { Badge } from '../common/Badge';
++import { useViewer } from '../../context/ViewerContext';
++
++export interface ProductCatalogProps {
++  onPreviewIn3D?: (product: Product) => void;
++  onAddToCart?: (product: Product) => void;
++  initialCategory?: ProductCategory | 'all';
++  initialTier?: AvailableTierOption;
++  className?: string;
++}
++
++function useSafeViewer() {
++  try {
++    return useViewer();
++  } catch {
++    return null;
++  }
++}
++
++export const ProductCatalog: React.FC<ProductCatalogProps> = ({
++  onPreviewIn3D,
++  onAddToCart,
++  initialCategory = 'all',
++  initialTier = 'all',
++  className = '',
++}) => {
++  const viewer = useSafeViewer();
++
++  // Filter state
++  const [selectedCategory, setSelectedCategory] = useState<ProductCategory | 'all'>(
++    initialCategory
++  );
++  const [selectedTier, setSelectedTier] = useState<AvailableTierOption>(initialTier);
++
++  // Comparison state (up to 3 product IDs)
++  const [comparedProductIds, setComparedProductIds] = useState<string[]>([]);
++  const [isCompareModalOpen, setIsCompareModalOpen] = useState(false);
++
++  // Filtered products list
++  const filteredProducts = useMemo(() => {
++    return filterProducts(PRODUCTS, selectedCategory, selectedTier);
++  }, [selectedCategory, selectedTier]);
++
++  // Dynamic device counts for filter badges
++  const counts = useMemo(() => {
++    const total = PRODUCTS.length;
++    const band = PRODUCTS.filter((p) => p.category === 'band').length;
++    const watch = PRODUCTS.filter((p) => p.category === 'watch').length;
++    return { total, band, watch };
++  }, []);
++
++  // Comparison toggle handler
++  const handleToggleCompare = (product: Product) => {
++    setComparedProductIds((prev) => {
++      if (prev.includes(product.id)) {
++        return prev.filter((id) => id !== product.id);
++      }
++      if (prev.length >= 3) {
++        // Limit to 3 items
++        return prev;
++      }
++      return [...prev, product.id];
++    });
++  };
++
++  const handleRemoveCompared = (productId: string) => {
++    setComparedProductIds((prev) => prev.filter((id) => id !== productId));
++  };
++
++  const handleClearCompared = () => {
++    setComparedProductIds([]);
++  };
++
++  const comparedProducts = useMemo(() => {
++    return PRODUCTS.filter((p) => comparedProductIds.includes(p.id));
++  }, [comparedProductIds]);
++
++  const handleResetFilters = () => {
++    setSelectedCategory('all');
++    setSelectedTier('all');
++  };
++
++  const handlePreview = (product: Product) => {
++    if (viewer?.setSelectedProductId) {
++      viewer.setSelectedProductId(product.id);
++    }
++    if (onPreviewIn3D) {
++      onPreviewIn3D(product);
++    }
++  };
++
++  return (
++    <section id="catalog" className={`w-full py-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto ${className}`}>
++      {/* Section Header */}
++      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
++        <div>
++          <div className="flex items-center gap-2 mb-2">
++            <Badge variant="violet" size="sm" dot>
++              Hardware Catalog
++            </Badge>
++            <span className="text-xs text-slate-400 font-medium">5 Distinct Tiers</span>
++          </div>
++          <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900">
++            Explore All Models
++          </h2>
++          <p className="text-sm text-slate-500 mt-1 max-w-xl">
++            Choose from sleek fitness trackers to rugged 100m expedition smartwatches. Preview each in interactive 3D studio.
++          </p>
++        </div>
++
++        {/* Quick Compare Indicator if items selected */}
++        {comparedProductIds.length > 0 && (
++          <Button
++            onClick={() => setIsCompareModalOpen(true)}
++            variant="outline"
++            size="sm"
++            icon={<ArrowLeftRight className="w-4 h-4 text-[#7C3AED]" />}
++          >
++            {`Compare (${comparedProductIds.length}/3)`}
++          </Button>
++        )}
++      </div>
++
++      {/* Filter Tabs Bar */}
++      <div className="mb-8">
++        <FilterTabs
++          selectedCategory={selectedCategory}
++          onCategoryChange={setSelectedCategory}
++          selectedTier={selectedTier}
++          onTierChange={setSelectedTier}
++          counts={counts}
++        />
++      </div>
++
++      {/* Products Grid */}
++      {filteredProducts.length === 0 ? (
++        <div className="flex flex-col items-center justify-center p-12 text-center bg-white/70 backdrop-blur-md rounded-3xl border border-purple-100 my-8">
++          <div className="w-12 h-12 rounded-2xl bg-purple-50 text-[#7C3AED] flex items-center justify-center mb-3">
++            <Filter className="w-6 h-6" />
++          </div>
++          <h3 className="text-base font-bold text-slate-900">No devices found</h3>
++          <p className="text-xs text-slate-500 max-w-md mt-1 mb-4">
++            No devices currently match your selected filters. Try broadening your category or tier selection.
++          </p>
++          <Button onClick={handleResetFilters} variant="primary" size="sm">
++            Reset All Filters
++          </Button>
++        </div>
++      ) : (
++        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
++          {filteredProducts.map((product) => {
++            const isCompared = comparedProductIds.includes(product.id);
++            const disableCompare = comparedProductIds.length >= 3 && !isCompared;
++
++            return (
++              <ProductCard
++                key={product.id}
++                product={product}
++                isCompared={isCompared}
++                disableCompare={disableCompare}
++                onToggleCompare={handleToggleCompare}
++                onPreviewIn3D={handlePreview}
++                onAddToCart={onAddToCart}
++              />
++            );
++          })}
++        </div>
++      )}
++
++      {/* Floating Comparison Bottom Dock */}
++      {comparedProductIds.length > 0 && (
++        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-11/12 max-w-2xl bg-white/95 backdrop-blur-md border border-purple-200/80 rounded-full shadow-2xl p-2.5 sm:px-4 sm:py-3 animate-in slide-in-from-bottom duration-300 flex items-center justify-between gap-3">
++          <div className="flex items-center gap-2 overflow-x-auto py-1">
++            <span className="text-xs font-bold text-slate-700 hidden sm:inline whitespace-nowrap">
++              Compare:
++            </span>
++            {comparedProducts.map((p) => (
++              <div
++                key={p.id}
++                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-purple-50 border border-purple-200 text-xs font-medium text-slate-800 shrink-0"
++              >
++                <span className="truncate max-w-[120px]">{p.name}</span>
++                <button
++                  onClick={() => handleRemoveCompared(p.id)}
++                  className="text-slate-400 hover:text-rose-500 p-0.5 rounded-full"
++                  aria-label={`Remove ${p.name}`}
++                >
++                  <X className="w-3 h-3" />
++                </button>
++              </div>
++            ))}
++          </div>
++
++          <div className="flex items-center gap-2 shrink-0">
++            <button
++              onClick={handleClearCompared}
++              className="text-xs text-slate-400 hover:text-slate-600 px-2 py-1"
++            >
++              Clear
++            </button>
++            <Button
++              onClick={() => setIsCompareModalOpen(true)}
++              variant="primary"
++              size="sm"
++              icon={<ArrowLeftRight className="w-3.5 h-3.5" />}
++            >
++              {`Compare (${comparedProductIds.length}/3)`}
++            </Button>
++          </div>
++        </div>
++      )}
++
++      {/* Comparison Modal */}
++      <ComparisonModal
++        isOpen={isCompareModalOpen}
++        onClose={() => setIsCompareModalOpen(false)}
++        products={comparedProducts}
++        onRemoveProduct={handleRemoveCompared}
++        onClearAll={handleClearCompared}
++        onPreviewIn3D={(id) => {
++          setIsCompareModalOpen(false);
++          const p = PRODUCTS.find((x) => x.id === id);
++          if (p) handlePreview(p);
++        }}
++      />
++    </section>
++  );
++};
+diff --git a/src/components/common/Badge.tsx b/src/components/common/Badge.tsx
+new file mode 100644
+index 0000000..77d6592
+--- /dev/null
++++ b/src/components/common/Badge.tsx
+@@ -0,0 +1,92 @@
++import React from 'react';
++
++export type BadgeVariant =
++  | 'default'
++  | 'violet'
++  | 'cyan'
++  | 'softCyan'
++  | 'sale'
++  | 'neutral'
++  | 'outline';
++
++export type BadgeSize = 'sm' | 'md' | 'lg';
++
++export interface BadgeProps {
++  children: React.ReactNode;
++  variant?: BadgeVariant;
++  size?: BadgeSize;
++  dot?: boolean;
++  pulse?: boolean;
++  className?: string;
++  ariaLabel?: string;
++}
++
++const variantStyles: Record<BadgeVariant, { container: string; dot: string }> = {
++  default: {
++    container: 'bg-purple-50 text-[#7C3AED] border border-purple-200/80',
++    dot: 'bg-[#7C3AED]',
++  },
++  violet: {
++    container: 'bg-purple-100 text-[#7C3AED] border border-purple-200 shadow-sm shadow-purple-500/10',
++    dot: 'bg-[#7C3AED]',
++  },
++  cyan: {
++    container: 'bg-cyan-100 text-[#06B6D4] border border-cyan-200 shadow-sm shadow-cyan-500/10',
++    dot: 'bg-[#06B6D4]',
++  },
++  softCyan: {
++    container: 'bg-[#E0F7FA] text-[#0891B2] border border-cyan-200/60',
++    dot: 'bg-[#0891B2]',
++  },
++  sale: {
++    container: 'bg-rose-100 text-rose-600 border border-rose-200 shadow-sm shadow-rose-500/10',
++    dot: 'bg-rose-500',
++  },
++  neutral: {
++    container: 'bg-slate-100 text-slate-700 border border-slate-200',
++    dot: 'bg-slate-400',
++  },
++  outline: {
++    container: 'bg-transparent text-[#7C3AED] border border-purple-300',
++    dot: 'bg-[#7C3AED]',
++  },
++};
++
++const sizeStyles: Record<BadgeSize, string> = {
++  sm: 'text-[11px] px-2 py-0.5 gap-1.5',
++  md: 'text-xs px-2.5 py-1 gap-1.5',
++  lg: 'text-sm px-3.5 py-1.5 gap-2',
++};
++
++export const Badge: React.FC<BadgeProps> = ({
++  children,
++  variant = 'default',
++  size = 'md',
++  dot = false,
++  pulse = false,
++  className = '',
++  ariaLabel,
++}) => {
++  const selectedVariant = variantStyles[variant] || variantStyles.default;
++  const selectedSize = sizeStyles[size] || sizeStyles.md;
++
++  return (
++    <span
++      role={ariaLabel ? 'status' : undefined}
++      aria-label={ariaLabel}
++      className={`inline-flex items-center font-medium rounded-full transition-colors whitespace-nowrap ${selectedVariant.container} ${selectedSize} ${className}`}
++    >
++      {dot && (
++        <span className="relative flex h-2 w-2 items-center justify-center">
++          {pulse && (
++            <span
++              className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${selectedVariant.dot}`}
++            />
++          )}
++          <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${selectedVariant.dot}`} />
++        </span>
++      )}
++      {children}
++    </span>
++  );
++};
+diff --git a/src/components/common/Button.tsx b/src/components/common/Button.tsx
+new file mode 100644
+index 0000000..d49a3d2
+--- /dev/null
++++ b/src/components/common/Button.tsx
+@@ -0,0 +1,108 @@
++import React from 'react';
++
++export type ButtonVariant =
++  | 'primary'
++  | 'secondary'
++  | 'cyan'
++  | 'outline'
++  | 'ghost'
++  | 'subtle';
++
++export type ButtonSize = 'xs' | 'sm' | 'md' | 'lg';
++
++export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
++  variant?: ButtonVariant;
++  size?: ButtonSize;
++  icon?: React.ReactNode;
++  iconPosition?: 'left' | 'right';
++  isLoading?: boolean;
++  fullWidth?: boolean;
++}
++
++const variantStyles: Record<ButtonVariant, string> = {
++  primary:
++    'bg-[#7C3AED] hover:bg-[#6D28D9] text-white shadow-md shadow-purple-500/20 hover:shadow-lg hover:shadow-purple-500/30 active:scale-95 focus-visible:ring-purple-400',
++  secondary:
++    'bg-slate-900 hover:bg-slate-800 text-white shadow-sm active:scale-95 focus-visible:ring-slate-400',
++  cyan:
++    'bg-[#06B6D4] hover:bg-[#0891B2] text-white shadow-md shadow-cyan-500/20 hover:shadow-lg hover:shadow-cyan-500/30 active:scale-95 focus-visible:ring-cyan-400',
++  outline:
++    'bg-white/80 hover:bg-purple-50 text-[#7C3AED] border border-purple-300 hover:border-[#7C3AED] shadow-sm active:scale-95 focus-visible:ring-purple-400',
++  ghost:
++    'bg-transparent hover:bg-purple-50/80 text-slate-700 hover:text-[#7C3AED] active:scale-95 focus-visible:ring-purple-300',
++  subtle:
++    'bg-purple-50 hover:bg-purple-100 text-[#7C3AED] active:scale-95 focus-visible:ring-purple-300',
++};
++
++const sizeStyles: Record<ButtonSize, string> = {
++  xs: 'text-xs px-2.5 py-1 gap-1.5',
++  sm: 'text-xs px-3.5 py-1.5 gap-1.5',
++  md: 'text-sm px-4 py-2 gap-2',
++  lg: 'text-base px-6 py-3 gap-2.5',
++};
++
++export const Button: React.FC<ButtonProps> = ({
++  children,
++  variant = 'primary',
++  size = 'md',
++  icon,
++  iconPosition = 'left',
++  isLoading = false,
++  fullWidth = false,
++  disabled = false,
++  className = '',
++  type = 'button',
++  ...rest
++}) => {
++  const isDisabled = disabled || isLoading;
++  const selectedVariant = variantStyles[variant] || variantStyles.primary;
++  const selectedSize = sizeStyles[size] || sizeStyles.md;
++
++  return (
++    <button
++      type={type}
++      disabled={isDisabled}
++      className={`inline-flex items-center justify-center font-semibold rounded-full transition-all duration-200 select-none outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${selectedVariant} ${selectedSize} ${
++        fullWidth ? 'w-full' : ''
++      } ${isDisabled ? 'opacity-50 cursor-not-allowed pointer-events-none' : 'cursor-pointer'} ${className}`}
++      {...rest}
++    >
++      {isLoading ? (
++        <>
++          <svg
++            className="animate-spin -ml-1 mr-2 h-4 w-4 text-current"
++            xmlns="http://www.w3.org/2000/svg"
++            fill="none"
++            viewBox="0 0 24 24"
++            aria-hidden="true"
++          >
++            <circle
++              className="opacity-25"
++              cx="12"
++              cy="12"
++              r="10"
++              stroke="currentColor"
++              strokeWidth="4"
++            />
++            <path
++              className="opacity-75"
++              fill="currentColor"
++              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
++            />
++          </svg>
++          <span>{children}</span>
++        </>
++      ) : (
++        <>
++          {icon && iconPosition === 'left' && (
++            <span className="inline-flex shrink-0">{icon}</span>
++          )}
++          {children && <span>{children}</span>}
++          {icon && iconPosition === 'right' && (
++            <span className="inline-flex shrink-0">{icon}</span>
++          )}
++        </>
++      )}
++    </button>
++  );
++};
+diff --git a/src/components/layout/Footer.tsx b/src/components/layout/Footer.tsx
+new file mode 100644
+index 0000000..b6f361e
+--- /dev/null
++++ b/src/components/layout/Footer.tsx
+@@ -0,0 +1,151 @@
++import React from 'react';
++import { Watch, ShieldCheck, Zap, RotateCcw, Cpu, HeartHandshake } from 'lucide-react';
++import { Badge } from '../common/Badge';
++
++export const Footer: React.FC = () => {
++  return (
++    <footer className="w-full bg-white/90 border-t border-purple-100/80 pt-16 pb-12 mt-20 transition-all duration-200">
++      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
++        {/* Value Proposition Highlights Banner */}
++        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 pb-12 border-b border-purple-100/60">
++          <div className="flex items-start gap-3.5 p-4 rounded-2xl bg-purple-50/50 border border-purple-100/40">
++            <div className="p-2.5 rounded-xl bg-purple-100/80 text-[#7C3AED]">
++              <Cpu className="w-5 h-5" />
++            </div>
++            <div>
++              <h4 className="text-sm font-bold text-slate-900">Procedural 3D Engine</h4>
++              <p className="text-xs text-slate-500 mt-0.5">
++                Zero external mesh downloads, instant WebGL hardware-accelerated preview.
++              </p>
++            </div>
++          </div>
++
++          <div className="flex items-start gap-3.5 p-4 rounded-2xl bg-cyan-50/50 border border-cyan-100/40">
++            <div className="p-2.5 rounded-xl bg-cyan-100/80 text-[#06B6D4]">
++              <Zap className="w-5 h-5" />
++            </div>
++            <div>
++              <h4 className="text-sm font-bold text-slate-900">Live Biosensor Sim</h4>
++              <p className="text-xs text-slate-500 mt-0.5">
++                Dynamic ECG waves, step counter rings, and weather telemetry.
++              </p>
++            </div>
++          </div>
++
++          <div className="flex items-start gap-3.5 p-4 rounded-2xl bg-purple-50/50 border border-purple-100/40">
++            <div className="p-2.5 rounded-xl bg-purple-100/80 text-[#7C3AED]">
++              <ShieldCheck className="w-5 h-5" />
++            </div>
++            <div>
++              <h4 className="text-sm font-bold text-slate-900">Grade 5 Titanium</h4>
++              <p className="text-xs text-slate-500 mt-0.5">
++                Up to 100m dive rating and sapphire crystal screens.
++              </p>
++            </div>
++          </div>
++
++          <div className="flex items-start gap-3.5 p-4 rounded-2xl bg-cyan-50/50 border border-cyan-100/40">
++            <div className="p-2.5 rounded-xl bg-cyan-100/80 text-[#06B6D4]">
++              <RotateCcw className="w-5 h-5" />
++            </div>
++            <div>
++              <h4 className="text-sm font-bold text-slate-900">Instant Cart Persistence</h4>
++              <p className="text-xs text-slate-500 mt-0.5">
++                Safe client-side localStorage sync with zero friction checkout.
++              </p>
++            </div>
++          </div>
++        </div>
++
++        {/* Footer Navigation Columns */}
++        <div className="grid grid-cols-2 md:grid-cols-4 gap-8 py-12">
++          {/* Brand Info */}
++          <div className="col-span-2 md:col-span-1 flex flex-col gap-3">
++            <div className="flex items-center gap-2.5">
++              <div className="flex items-center justify-center w-8 h-8 rounded-xl bg-gradient-to-tr from-[#7C3AED] to-[#06B6D4] text-white shadow-sm">
++                <Watch className="w-4 h-4" />
++              </div>
++              <span className="text-base font-black tracking-wider text-slate-900">
++                HORIZON
++              </span>
++            </div>
++            <p className="text-xs leading-relaxed text-slate-500 pr-4">
++              Next-generation 3D interactive smart wearables studio. Precision engineering meets ultra-clean digital craftsmanship.
++            </p>
++            <div className="pt-2">
++              <Badge variant="softCyan" size="sm" dot>
++                Prototype v0.1.0 Live
++              </Badge>
++            </div>
++          </div>
++
++          {/* Catalog Categories */}
++          <div>
++            <h5 className="text-xs font-bold uppercase tracking-wider text-slate-900 mb-3">
++              Devices
++            </h5>
++            <ul className="space-y-2 text-xs text-slate-500">
++              <li>
++                <span className="font-medium text-slate-700">PulseBand 2</span>
++                <span className="block text-[11px] text-slate-400">Fitness Band Standard</span>
++              </li>
++              <li>
++                <span className="font-medium text-slate-700">PulseBand Pro</span>
++                <span className="block text-[11px] text-slate-400">Curved AMOLED & GPS</span>
++              </li>
++              <li>
++                <span className="font-medium text-slate-700">Horizon Watch SE</span>
++                <span className="block text-[11px] text-slate-400">Smart Watch Standard</span>
++              </li>
++              <li>
++                <span className="font-medium text-slate-700">Horizon Watch Pro</span>
++                <span className="block text-[11px] text-slate-400">Titanium & Rotating Crown</span>
++              </li>
++              <li>
++                <span className="font-medium text-slate-700">Horizon Watch Pro Max</span>
++                <span className="block text-[11px] text-slate-400">Expedition 100m Flagship</span>
++              </li>
++            </ul>
++          </div>
++
++          {/* Technology Highlights */}
++          <div>
++            <h5 className="text-xs font-bold uppercase tracking-wider text-slate-900 mb-3">
++              Technology
++            </h5>
++            <ul className="space-y-2 text-xs text-slate-500">
++              <li className="hover:text-slate-800 transition-colors">Three.js Procedural Pipeline</li>
++              <li className="hover:text-slate-800 transition-colors">Canvas2D Watch Face Mapping</li>
++              <li className="hover:text-slate-800 transition-colors">ACES Filmic Color Grading</li>
++              <li className="hover:text-slate-800 transition-colors">Dynamic ECG Algorithm</li>
++              <li className="hover:text-slate-800 transition-colors">Client LocalStorage Sync</li>
++            </ul>
++          </div>
++
++          {/* Experience & Studio */}
++          <div>
++            <h5 className="text-xs font-bold uppercase tracking-wider text-slate-900 mb-3">
++              Studio Experience
++            </h5>
++            <ul className="space-y-2 text-xs text-slate-500">
++              <li className="hover:text-slate-800 transition-colors">360° Free Orbit Rotation</li>
++              <li className="hover:text-slate-800 transition-colors">Live Chassis Swatches</li>
++              <li className="hover:text-slate-800 transition-colors">Custom Strap Pairings</li>
++              <li className="hover:text-slate-800 transition-colors">8-Dimension Spec Compare</li>
++              <li className="hover:text-slate-800 transition-colors">Simulated Checkout Flow</li>
++            </ul>
++          </div>
++        </div>
++
++        {/* Bottom Copyright & Disclaimer */}
++        <div className="pt-8 border-t border-purple-100/60 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400">
++          <p>© {new Date().getFullYear()} Horizon Wearables Interactive Studio. All rights reserved.</p>
++          <p className="flex items-center gap-1.5 text-center sm:text-right">
++            <HeartHandshake className="w-3.5 h-3.5 text-[#7C3AED]" />
++            <span>Built with React 19, Three.js, Vite & Tailwind CSS</span>
++          </p>
++        </div>
++      </div>
++    </footer>
++  );
++};
+diff --git a/src/components/layout/Navbar.tsx b/src/components/layout/Navbar.tsx
+new file mode 100644
+index 0000000..6ad6ec1
+--- /dev/null
++++ b/src/components/layout/Navbar.tsx
+@@ -0,0 +1,171 @@
++import React, { useState } from 'react';
++import { ShoppingBag, ArrowLeftRight, Sparkles, Menu, X, Watch } from 'lucide-react';
++import { ProductCategory } from '../../types';
++import { Badge } from '../common/Badge';
++
++export interface NavbarProps {
++  cartItemCount?: number;
++  onOpenCart?: () => void;
++  compareCount?: number;
++  onOpenCompare?: () => void;
++  selectedCategory?: ProductCategory | 'all';
++  onSelectCategory?: (category: ProductCategory | 'all') => void;
++  onLogoClick?: () => void;
++}
++
++const CATEGORY_LINKS: { id: ProductCategory | 'all'; label: string }[] = [
++  { id: 'all', label: 'All Devices' },
++  { id: 'band', label: 'Fitness Bands' },
++  { id: 'watch', label: 'Smart Watches' },
++];
++
++export const Navbar: React.FC<NavbarProps> = ({
++  cartItemCount = 0,
++  onOpenCart,
++  compareCount = 0,
++  onOpenCompare,
++  selectedCategory = 'all',
++  onSelectCategory,
++  onLogoClick,
++}) => {
++  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
++
++  const handleCategoryClick = (category: ProductCategory | 'all') => {
++    if (onSelectCategory) {
++      onSelectCategory(category);
++    }
++    setMobileMenuOpen(false);
++  };
++
++  return (
++    <header className="sticky top-0 z-40 w-full bg-white/85 backdrop-blur-md border-b border-purple-100/80 shadow-sm transition-all duration-200">
++      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
++        <div className="flex items-center justify-between h-16 sm:h-20">
++          {/* Brand Logo & Glowing Studio Badge */}
++          <div className="flex items-center gap-3">
++            <button
++              onClick={onLogoClick}
++              className="group flex items-center gap-2.5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7C3AED] rounded-xl p-1 -m-1"
++            >
++              <div className="relative flex items-center justify-center w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#7C3AED] to-[#06B6D4] text-white shadow-md shadow-purple-500/20 group-hover:shadow-purple-500/40 transition-all duration-200">
++                <Watch className="w-5 h-5 text-white" />
++                <span className="absolute -top-1 -right-1 flex h-3 w-3">
++                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#06B6D4] opacity-75" />
++                  <span className="relative inline-flex rounded-full h-3 w-3 bg-[#06B6D4] ring-2 ring-white" />
++                </span>
++              </div>
++              <div className="flex flex-col">
++                <span className="text-lg font-black tracking-wider text-slate-900 group-hover:text-[#7C3AED] transition-colors">
++                  HORIZON
++                </span>
++                <span className="text-[10px] tracking-widest font-semibold uppercase text-slate-400 -mt-1">
++                  Wearables
++                </span>
++              </div>
++            </button>
++
++            <div className="hidden sm:inline-flex">
++              <Badge variant="softCyan" size="sm" dot pulse>
++                <Sparkles className="w-3 h-3 text-[#06B6D4] mr-0.5" />
++                3D Studio
++              </Badge>
++            </div>
++          </div>
++
++          {/* Desktop Category Navigation Pills */}
++          <nav className="hidden md:flex items-center gap-1.5 p-1 rounded-full bg-purple-50/70 border border-purple-100/60 shadow-inner">
++            {CATEGORY_LINKS.map((tab) => {
++              const isActive = selectedCategory === tab.id;
++              return (
++                <button
++                  key={tab.id}
++                  onClick={() => handleCategoryClick(tab.id)}
++                  className={`px-4 py-1.5 rounded-full text-xs sm:text-sm font-semibold transition-all duration-200 ${
++                    isActive
++                      ? 'bg-[#7C3AED] text-white shadow-sm shadow-purple-500/25'
++                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
++                  }`}
++                >
++                  {tab.label}
++                </button>
++              );
++            })}
++          </nav>
++
++          {/* Right Action Trigger Buttons */}
++          <div className="flex items-center gap-2 sm:gap-3">
++            {/* Compare Trigger Button */}
++            {compareCount > 0 && (
++              <button
++                onClick={onOpenCompare}
++                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs sm:text-sm font-semibold text-[#7C3AED] bg-purple-50 hover:bg-purple-100 border border-purple-200 transition-all duration-200 shadow-sm active:scale-95"
++                aria-label={`Compare ${compareCount} devices`}
++              >
++                <ArrowLeftRight className="w-4 h-4 text-[#7C3AED]" />
++                <span>{`Compare (${compareCount})`}</span>
++              </button>
++            )}
++
++            {/* Shopping Cart Trigger */}
++            <button
++              onClick={onOpenCart}
++              className="relative inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-full text-slate-700 bg-white hover:bg-purple-50 border border-purple-200/80 shadow-sm hover:shadow-md hover:shadow-purple-500/10 active:scale-95 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7C3AED]"
++              aria-label="Shopping Cart"
++            >
++              <div className="relative">
++                <ShoppingBag className="w-5 h-5 text-slate-700" />
++                {cartItemCount > 0 && (
++                  <span className="absolute -top-2 -right-2.5 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-bold text-white bg-gradient-to-r from-[#7C3AED] to-[#06B6D4] rounded-full shadow-sm ring-2 ring-white animate-bounce-short">
++                    {cartItemCount}
++                  </span>
++                )}
++              </div>
++              <span className="hidden sm:inline-block text-xs font-semibold text-slate-700">
++                Cart
++              </span>
++            </button>
++
++            {/* Mobile Menu Toggle Button */}
++            <button
++              onClick={() => setMobileMenuOpen((prev) => !prev)}
++              className="md:hidden inline-flex items-center justify-center p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-purple-50 transition-colors focus:outline-none"
++              aria-label="Toggle Navigation Menu"
++            >
++              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
++            </button>
++          </div>
++        </div>
++
++        {/* Mobile Dropdown Navigation */}
++        {mobileMenuOpen && (
++          <div className="md:hidden py-4 border-t border-purple-100/60 bg-white/95 backdrop-blur-md animate-in slide-in-from-top duration-200">
++            <div className="flex flex-col gap-1.5 px-2">
++              <div className="px-3 py-1 mb-1">
++                <Badge variant="softCyan" size="sm" dot pulse>
++                  <Sparkles className="w-3 h-3 text-[#06B6D4] mr-0.5" />
++                  3D Studio Live
++                </Badge>
++              </div>
++              {CATEGORY_LINKS.map((tab) => {
++                const isActive = selectedCategory === tab.id;
++                return (
++                  <button
++                    key={tab.id}
++                    onClick={() => handleCategoryClick(tab.id)}
++                    className={`w-full text-left px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
++                      isActive
++                        ? 'bg-[#7C3AED] text-white shadow-sm'
++                        : 'text-slate-700 hover:bg-purple-50 hover:text-slate-900'
++                    }`}
++                  >
++                    {tab.label}
++                  </button>
++                );
++              })}
++            </div>
++          </div>
++        )}
++      </div>
++    </header>
++  );
++};
+diff --git a/src/index.css b/src/index.css
+new file mode 100644
+index 0000000..acf20ef
+--- /dev/null
++++ b/src/index.css
+@@ -0,0 +1,20 @@
++@tailwind base;
++@tailwind components;
++@tailwind utilities;
++
++:root {
++  --color-bg: #F8F6FF;
++  --color-surface: #FFFFFF;
++  --color-primary-violet: #7C3AED;
++  --color-electric-cyan: #06B6D4;
++  --color-soft-cyan: #E0F7FA;
++}
++
++body {
++  background-color: #F8F6FF;
++  color: #0F172A;
++  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
++  margin: 0;
++  padding: 0;
++  min-height: 100vh;
++}
+diff --git a/tailwind.config.js b/tailwind.config.js
+new file mode 100644
+index 0000000..7c9fafe
+--- /dev/null
++++ b/tailwind.config.js
+@@ -0,0 +1,28 @@
++/** @type {import('tailwindcss').Config} */
++export default {
++  content: [
++    "./index.html",
++    "./src/**/*.{js,ts,jsx,tsx}",
++  ],
++  theme: {
++    extend: {
++      colors: {
++        brand: {
++          background: '#F8F6FF',
++          surface: '#FFFFFF',
++          violet: '#7C3AED',
++          cyan: '#06B6D4',
++          softCyan: '#E0F7FA',
++          dark: '#0F172A',
++          muted: '#64748B',
++        },
++      },
++      boxShadow: {
++        'glow-violet': '0 0 20px -3px rgba(124, 58, 237, 0.25)',
++        'glow-cyan': '0 0 20px -3px rgba(6, 182, 212, 0.25)',
++        'soft': '0 12px 40px rgba(124, 58, 237, 0.06)',
++      },
++    },
++  },
++  plugins: [],
++};
+diff --git a/tests/catalog.test.ts b/tests/catalog.test.ts
+new file mode 100644
+index 0000000..3cbf87d
+--- /dev/null
++++ b/tests/catalog.test.ts
+@@ -0,0 +1,557 @@
++import { describe, it, expect, vi } from 'vitest';
++import React from 'react';
++import { renderToString } from 'react-dom/server';
++import { Badge } from '../src/components/common/Badge';
++import { Button } from '../src/components/common/Button';
++
++const h = React.createElement;
++
++describe('Common Components: Badge & Button', () => {
++  describe('Badge', () => {
++    it('should render children text correctly', () => {
++      const html = renderToString(h(Badge, null, 'Test Badge'));
++      expect(html).toContain('Test Badge');
++      expect(html).toContain('inline-flex');
++    });
++
++    it('should support color variants', () => {
++      const violetHtml = renderToString(h(Badge, { variant: 'violet' }, 'Violet'));
++      expect(violetHtml).toContain('text-[#7C3AED]');
++
++      const cyanHtml = renderToString(h(Badge, { variant: 'cyan' }, 'Cyan'));
++      expect(cyanHtml).toContain('text-[#06B6D4]');
++
++      const softCyanHtml = renderToString(h(Badge, { variant: 'softCyan' }, 'Soft Cyan'));
++      expect(softCyanHtml).toContain('bg-[#E0F7FA]');
++
++      const saleHtml = renderToString(h(Badge, { variant: 'sale' }, 'Sale'));
++      expect(saleHtml).toContain('text-rose');
++    });
++
++    it('should render a glowing dot when dot=true', () => {
++      const html = renderToString(h(Badge, { dot: true, pulse: true }, 'Live'));
++      expect(html).toContain('animate-ping');
++      expect(html).toContain('rounded-full');
++    });
++
++    it('should support custom sizes', () => {
++      const smHtml = renderToString(h(Badge, { size: 'sm' }, 'Small'));
++      expect(smHtml).toContain('text-[11px]');
++
++      const lgHtml = renderToString(h(Badge, { size: 'lg' }, 'Large'));
++      expect(lgHtml).toContain('text-sm');
++    });
++  });
++
++  describe('Button', () => {
++    it('should render button text and default primary styling', () => {
++      const html = renderToString(h(Button, null, 'Click Me'));
++      expect(html).toContain('Click Me');
++      expect(html).toContain('bg-[#7C3AED]');
++    });
++
++    it('should support different variants', () => {
++      const secondaryHtml = renderToString(h(Button, { variant: 'secondary' }, 'Secondary'));
++      expect(secondaryHtml).toContain('bg-slate-900');
++
++      const cyanHtml = renderToString(h(Button, { variant: 'cyan' }, 'Cyan'));
++      expect(cyanHtml).toContain('bg-[#06B6D4]');
++
++      const outlineHtml = renderToString(h(Button, { variant: 'outline' }, 'Outline'));
++      expect(outlineHtml).toContain('border-purple');
++
++      const ghostHtml = renderToString(h(Button, { variant: 'ghost' }, 'Ghost'));
++      expect(ghostHtml).toContain('hover:bg-purple-50');
++    });
++
++    it('should render disabled state and opacity classes', () => {
++      const html = renderToString(h(Button, { disabled: true }, 'Disabled'));
++      expect(html).toContain('disabled');
++      expect(html).toContain('opacity-50');
++    });
++
++    it('should render loading spinner when isLoading is true', () => {
++      const html = renderToString(h(Button, { isLoading: true }, 'Loading'));
++      expect(html).toContain('animate-spin');
++    });
++
++    it('should support icon placement', () => {
++      const icon = h('span', { 'data-testid': 'test-icon' }, '★');
++      const htmlLeft = renderToString(h(Button, { icon, iconPosition: 'left' }, 'Star'));
++      expect(htmlLeft).toContain('★');
++      expect(htmlLeft).toContain('Star');
++
++      const htmlRight = renderToString(h(Button, { icon, iconPosition: 'right' }, 'Star'));
++      expect(htmlRight).toContain('★');
++    });
++  });
++});
++
++describe('Layout Components: Navbar & Footer', () => {
++  describe('Navbar', () => {
++    it('should render brand logo, glowing badge, and category links', async () => {
++      const { Navbar } = await import('../src/components/layout/Navbar');
++      const html = renderToString(
++        h(Navbar, {
++          cartItemCount: 0,
++          compareCount: 0,
++          selectedCategory: 'all',
++        })
++      );
++
++      expect(html).toContain('HORIZON');
++      expect(html).toContain('All Devices');
++      expect(html).toContain('Fitness Bands');
++      expect(html).toContain('Smart Watches');
++      expect(html).toContain('3D Studio');
++    });
++
++    it('should render cart badge counter when cartItemCount > 0', async () => {
++      const { Navbar } = await import('../src/components/layout/Navbar');
++      const html = renderToString(
++        h(Navbar, {
++          cartItemCount: 3,
++        })
++      );
++
++      expect(html).toContain('3');
++      expect(html).toContain('Cart');
++    });
++
++    it('should render comparison button with count when compareCount > 0', async () => {
++      const { Navbar } = await import('../src/components/layout/Navbar');
++      const html = renderToString(
++        h(Navbar, {
++          compareCount: 2,
++        })
++      );
++
++      expect(html).toContain('Compare (2)');
++    });
++
++    it('should highlight active category', async () => {
++      const { Navbar } = await import('../src/components/layout/Navbar');
++      const html = renderToString(
++        h(Navbar, {
++          selectedCategory: 'band',
++        })
++      );
++
++      expect(html).toContain('Fitness Bands');
++      expect(html).toContain('bg-[#7C3AED]');
++    });
++  });
++
++  describe('Footer', () => {
++    it('should render footer branding, product links, and tech badges', async () => {
++      const { Footer } = await import('../src/components/layout/Footer');
++      const html = renderToString(h(Footer, null));
++
++      expect(html).toContain('HORIZON');
++      expect(html).toContain('PulseBand');
++      expect(html).toContain('Horizon Watch');
++      expect(html).toContain('Procedural 3D Engine');
++      expect(html).toContain('All rights reserved');
++    });
++  });
++});
++
++describe('Catalog Components: FilterTabs & Filtering Logic', () => {
++  it('should export pure filterProducts utility that filters accurately', async () => {
++    const { filterProducts } = await import('../src/components/catalog/FilterTabs');
++    const { PRODUCTS } = await import('../src/data/products');
++
++    // All / All
++    expect(filterProducts(PRODUCTS, 'all', 'all').length).toBe(5);
++
++    // By category
++    const bands = filterProducts(PRODUCTS, 'band', 'all');
++    expect(bands.length).toBe(2);
++    expect(bands.every((p) => p.category === 'band')).toBe(true);
++
++    const watches = filterProducts(PRODUCTS, 'watch', 'all');
++    expect(watches.length).toBe(3);
++    expect(watches.every((p) => p.category === 'watch')).toBe(true);
++
++    // By tier
++    const standardAll = filterProducts(PRODUCTS, 'all', 'standard');
++    expect(standardAll.length).toBe(2);
++
++    const proAll = filterProducts(PRODUCTS, 'all', 'pro');
++    expect(proAll.length).toBe(2);
++
++    const proMaxAll = filterProducts(PRODUCTS, 'all', 'pro_max');
++    expect(proMaxAll.length).toBe(1);
++    expect(proMaxAll[0].id).toBe('horizon-watch-pro-max');
++
++    // By category AND tier
++    const bandPro = filterProducts(PRODUCTS, 'band', 'pro');
++    expect(bandPro.length).toBe(1);
++    expect(bandPro[0].id).toBe('pulseband-pro');
++
++    const bandProMax = filterProducts(PRODUCTS, 'band', 'pro_max');
++    expect(bandProMax.length).toBe(0);
++
++    const watchPro = filterProducts(PRODUCTS, 'watch', 'pro');
++    expect(watchPro.length).toBe(1);
++    expect(watchPro[0].id).toBe('horizon-watch-pro');
++  });
++
++  it('should return available tiers per category correctly', async () => {
++    const { getAvailableTiersForCategory } = await import(
++      '../src/components/catalog/FilterTabs'
++    );
++
++    expect(getAvailableTiersForCategory('all')).toEqual([
++      'all',
++      'standard',
++      'pro',
++      'pro_max',
++    ]);
++    expect(getAvailableTiersForCategory('band')).toEqual(['all', 'standard', 'pro']);
++    expect(getAvailableTiersForCategory('watch')).toEqual([
++      'all',
++      'standard',
++      'pro',
++      'pro_max',
++    ]);
++  });
++
++  it('should render category tabs and tier filter buttons', async () => {
++    const { FilterTabs } = await import('../src/components/catalog/FilterTabs');
++    const html = renderToString(
++      h(FilterTabs, {
++        selectedCategory: 'all',
++        onCategoryChange: () => {},
++        selectedTier: 'all',
++        onTierChange: () => {},
++        counts: {
++          total: 5,
++          band: 2,
++          watch: 3,
++        },
++      })
++    );
++
++    expect(html).toContain('All Devices');
++    expect(html).toContain('Fitness Bands');
++    expect(html).toContain('Smart Watches');
++    expect(html).toContain('All Tiers');
++    expect(html).toContain('Standard');
++    expect(html).toContain('Pro');
++    expect(html).toContain('Pro Max');
++  });
++
++  it('should omit Pro Max tier when category is band', async () => {
++    const { FilterTabs } = await import('../src/components/catalog/FilterTabs');
++    const html = renderToString(
++      h(FilterTabs, {
++        selectedCategory: 'band',
++        onCategoryChange: () => {},
++        selectedTier: 'all',
++        onTierChange: () => {},
++      })
++    );
++
++    expect(html).toContain('Standard');
++    expect(html).toContain('Pro');
++    expect(html).not.toContain('Pro Max');
++  });
++});
++
++describe('Catalog Components: ProductCard', () => {
++  it('should render device details, pricing, tier badge, and spec pills', async () => {
++    const { ProductCard } = await import('../src/components/catalog/ProductCard');
++    const { PRODUCTS } = await import('../src/data/products');
++    const product = PRODUCTS[1]; // PulseBand Pro ($89, sale from $109)
++
++    const html = renderToString(
++      h(ProductCard, {
++        product,
++        isCompared: false,
++        onToggleCompare: () => {},
++      })
++    );
++
++    expect(html).toContain('PulseBand Pro');
++    expect(html).toContain('Curved AMOLED with standalone GPS');
++    expect(html).toContain('$89');
++    expect(html).toContain('$109');
++    expect(html).toContain('Best Value');
++    expect(html).toContain('Pro');
++    expect(html).toContain('Curved AMOLED');
++    expect(html).toContain('Up to 10 days');
++    expect(html).toContain('5 ATM (50m)');
++    // Action trigger
++    expect(html).toContain('Preview in 3D');
++  });
++
++  it('should render color swatches for chassis and straps', async () => {
++    const { ProductCard } = await import('../src/components/catalog/ProductCard');
++    const { PRODUCTS } = await import('../src/data/products');
++    const product = PRODUCTS[0]; // PulseBand 2
++
++    const html = renderToString(
++      h(ProductCard, {
++        product,
++        isCompared: false,
++        onToggleCompare: () => {},
++      })
++    );
++
++    expect(html).toContain('Chassis');
++    expect(html).toContain('Straps');
++    expect(html).toContain('Obsidian Black');
++    expect(html).toContain('Frost Silver');
++  });
++
++  it('should reflect comparison state and disable when cap reached', async () => {
++    const { ProductCard } = await import('../src/components/catalog/ProductCard');
++    const { PRODUCTS } = await import('../src/data/products');
++    const product = PRODUCTS[2];
++
++    const uncomparedHtml = renderToString(
++      h(ProductCard, {
++        product,
++        isCompared: false,
++        onToggleCompare: () => {},
++      })
++    );
++    expect(uncomparedHtml).toContain('Compare');
++
++    const comparedHtml = renderToString(
++      h(ProductCard, {
++        product,
++        isCompared: true,
++        onToggleCompare: () => {},
++      })
++    );
++    expect(comparedHtml).toContain('Compared');
++
++    const disabledHtml = renderToString(
++      h(ProductCard, {
++        product,
++        isCompared: false,
++        disableCompare: true,
++        onToggleCompare: () => {},
++      })
++    );
++    expect(disabledHtml).toContain('disabled');
++  });
++});
++
++describe('Catalog Components: ComparisonModal', () => {
++  it('should export all 8 technical comparison dimensions', async () => {
++    const { COMPARISON_DIMENSIONS } = await import(
++      '../src/components/catalog/ComparisonModal'
++    );
++
++    expect(COMPARISON_DIMENSIONS.length).toBe(8);
++    const ids = COMPARISON_DIMENSIONS.map((d) => d.id);
++    expect(ids).toContain('display');
++    expect(ids).toContain('battery');
++    expect(ids).toContain('waterResistance');
++    expect(ids).toContain('sensors');
++    expect(ids).toContain('weight');
++    expect(ids).toContain('casing');
++    expect(ids).toContain('connectivity');
++    expect(ids).toContain('price');
++  });
++
++  it('should render side-by-side comparison for up to 3 devices', async () => {
++    const { ComparisonModal } = await import(
++      '../src/components/catalog/ComparisonModal'
++    );
++    const { PRODUCTS } = await import('../src/data/products');
++    const compared = [PRODUCTS[0], PRODUCTS[2], PRODUCTS[4]]; // 3 devices
++
++    const html = renderToString(
++      h(ComparisonModal, {
++        isOpen: true,
++        onClose: () => {},
++        products: compared,
++      })
++    );
++
++    expect(html).toContain('Device Specification Comparison');
++    expect(html).toContain('PulseBand 2');
++    expect(html).toContain('Horizon Watch SE');
++    expect(html).toContain('Horizon Watch Pro Max');
++
++    // Check all 8 dimension labels in modal
++    expect(html).toContain('Display');
++    expect(html).toContain('Battery Life');
++    expect(html).toContain('Water Resistance');
++    expect(html).toContain('Sensors');
++    expect(html).toContain('Weight');
++    expect(html).toContain('Casing Material');
++    expect(html).toContain('Connectivity');
++    expect(html).toContain('Price');
++
++    // Values
++    expect(html).toContain('$49');
++    expect(html).toContain('$179');
++    expect(html).toContain('$449');
++  });
++
++  it('should render empty state when no products are passed', async () => {
++    const { ComparisonModal } = await import(
++      '../src/components/catalog/ComparisonModal'
++    );
++
++    const html = renderToString(
++      h(ComparisonModal, {
++        isOpen: true,
++        onClose: () => {},
++        products: [],
++      })
++    );
++
++    expect(html).toContain('No devices selected for comparison');
++  });
++
++  it('should not render anything when isOpen is false', async () => {
++    const { ComparisonModal } = await import(
++      '../src/components/catalog/ComparisonModal'
++    );
++    const { PRODUCTS } = await import('../src/data/products');
++
++    const html = renderToString(
++      h(ComparisonModal, {
++        isOpen: false,
++        onClose: () => {},
++        products: [PRODUCTS[0]],
++      })
++    );
++
++    expect(html).toBe('');
++  });
++});
++
++describe('Catalog Components: ProductCatalog Integration', () => {
++  it('should render all 5 devices with FilterTabs and grid layout', async () => {
++    const { ProductCatalog } = await import(
++      '../src/components/catalog/ProductCatalog'
++    );
++    const { ViewerProvider } = await import('../src/context/ViewerContext');
++
++    const html = renderToString(
++      h(ViewerProvider, null, h(ProductCatalog, null))
++    );
++
++    expect(html).toContain('PulseBand 2');
++    expect(html).toContain('PulseBand Pro');
++    expect(html).toContain('Horizon Watch SE');
++    expect(html).toContain('Horizon Watch Pro');
++    expect(html).toContain('Horizon Watch Pro Max');
++    expect(html).toContain('All Devices');
++  });
++
++  it('should support initialCategory and initialTier props', async () => {
++    const { ProductCatalog } = await import(
++      '../src/components/catalog/ProductCatalog'
++    );
++    const { ViewerProvider } = await import('../src/context/ViewerContext');
++
++    const html = renderToString(
++      h(ViewerProvider, null, h(ProductCatalog, {
++        initialCategory: 'band',
++        initialTier: 'standard',
++      }))
++    );
++
++    expect(html).toContain('PulseBand 2');
++    expect(html).not.toContain('PulseBand Pro');
++    expect(html).not.toContain('Horizon Watch SE');
++  });
++});
++
++describe('Catalog Interactive Handlers and Callbacks', () => {
++  it('should invoke onToggleCompare and onAddToCart on ProductCard', async () => {
++    const { ProductCard } = await import('../src/components/catalog/ProductCard');
++    const { PRODUCTS } = await import('../src/data/products');
++
++    const onToggle = vi.fn();
++    const onAdd = vi.fn();
++    const onPreview = vi.fn();
++
++    const element = h(ProductCard, {
++      product: PRODUCTS[0],
++      onToggleCompare: onToggle,
++      onAddToCart: onAdd,
++      onPreviewIn3D: onPreview,
++    });
++
++    const html = renderToString(element);
++    expect(html).toContain('PulseBand 2');
++
++    element.props.onToggleCompare(PRODUCTS[0]);
++    expect(onToggle).toHaveBeenCalledWith(PRODUCTS[0]);
++
++    element.props.onAddToCart(PRODUCTS[0]);
++    expect(onAdd).toHaveBeenCalledWith(PRODUCTS[0]);
++
++    element.props.onPreviewIn3D(PRODUCTS[0]);
++    expect(onPreview).toHaveBeenCalledWith(PRODUCTS[0]);
++  });
++
++  it('should invoke onRemoveProduct and onClearAll on ComparisonModal', async () => {
++    const { ComparisonModal } = await import('../src/components/catalog/ComparisonModal');
++    const { PRODUCTS } = await import('../src/data/products');
++
++    const onRemove = vi.fn();
++    const onClear = vi.fn();
++    const onClose = vi.fn();
++    const onPreview = vi.fn();
++
++    const element = h(ComparisonModal, {
++      isOpen: true,
++      products: [PRODUCTS[0], PRODUCTS[1]],
++      onRemoveProduct: onRemove,
++      onClearAll: onClear,
++      onClose: onClose,
++      onPreviewIn3D: onPreview,
++    });
++
++    element.props.onRemoveProduct('pulseband-2');
++    expect(onRemove).toHaveBeenCalledWith('pulseband-2');
++
++    element.props.onClearAll();
++    expect(onClear).toHaveBeenCalled();
++
++    element.props.onClose();
++    expect(onClose).toHaveBeenCalled();
++
++    element.props.onPreviewIn3D('pulseband-pro');
++    expect(onPreview).toHaveBeenCalledWith('pulseband-pro');
++  });
++
++  it('should invoke onSelectCategory, onOpenCart, and onOpenCompare on Navbar', async () => {
++    const { Navbar } = await import('../src/components/layout/Navbar');
++
++    const onSelectCategory = vi.fn();
++    const onOpenCart = vi.fn();
++    const onOpenCompare = vi.fn();
++
++    const element = h(Navbar, {
++      cartItemCount: 2,
++      compareCount: 3,
++      onSelectCategory,
++      onOpenCart,
++      onOpenCompare,
++    });
++
++    element.props.onSelectCategory('band');
++    expect(onSelectCategory).toHaveBeenCalledWith('band');
++
++    element.props.onOpenCart();
++    expect(onOpenCart).toHaveBeenCalled();
++
++    element.props.onOpenCompare();
++    expect(onOpenCompare).toHaveBeenCalled();
++  });
++});
++
++
++
++

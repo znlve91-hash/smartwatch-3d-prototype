@@ -1,0 +1,2626 @@
+# Review package: T4-artifact
+mode: worktree against base d639551f5ff8f956894113059575e4cdebc4ced1
+artifact-hash: 079539b05657407371966181289a664f04c393c8
+files-changed: 8
+
+## Stat
+ src/App.tsx                           | 326 ++++++++++++++++
+ src/components/cart/CartDrawer.tsx    | 332 ++++++++++++++++
+ src/components/cart/CartItemRow.tsx   | 134 +++++++
+ src/components/cart/CheckoutModal.tsx | 600 ++++++++++++++++++++++++++++
+ src/context/CartContext.tsx           | 395 +++++++++++++++++++
+ src/main.tsx                          |  15 +
+ tasks/todo.md                         |  21 +-
+ tests/cart.test.ts                    | 711 ++++++++++++++++++++++++++++++++++
+ 8 files changed, 2524 insertions(+), 10 deletions(-)
+
+## Diff
+diff --git a/src/App.tsx b/src/App.tsx
+new file mode 100644
+index 0000000..100cdd1
+--- /dev/null
++++ b/src/App.tsx
+@@ -0,0 +1,326 @@
++import React, { useState } from 'react';
++import {
++  Sparkles,
++  ShoppingBag,
++  Palette,
++  Check,
++  Watch,
++  Sliders,
++  Layers,
++  ArrowRight,
++} from 'lucide-react';
++import { ViewerProvider, useViewer } from './context/ViewerContext';
++import { CartProvider, useCart } from './context/CartContext';
++import { PRODUCTS, WATCH_FACES } from './data/products';
++import { ColorOption, ProductCategory, WatchFaceId } from './types';
++import { formatCurrency, formatTierName } from './utils/formatters';
++
++// Components
++import { Navbar } from './components/layout/Navbar';
++import { Footer } from './components/layout/Footer';
++import { WatchViewer3D } from './components/viewer3d/WatchViewer3D';
++import { ProductCatalog } from './components/catalog/ProductCatalog';
++import { CartDrawer } from './components/cart/CartDrawer';
++import { CheckoutModal } from './components/cart/CheckoutModal';
++import { Button } from './components/common/Button';
++import { Badge } from './components/common/Badge';
++
++export const AppContent: React.FC = () => {
++  const {
++    selectedProductId,
++    selectedProduct,
++    setSelectedProductId,
++    selectedChassisColor,
++    setSelectedChassisColor,
++    selectedStrapColor,
++    setSelectedStrapColor,
++    selectedWatchFace,
++    setSelectedWatchFace,
++  } = useViewer();
++
++  const {
++    totalItemsCount,
++    openCart,
++    addItem,
++  } = useCart();
++
++  const [activeCategory, setActiveCategory] = useState<ProductCategory | 'all'>('all');
++
++  const handleAddCustomizedToCart = () => {
++    addItem({
++      productId: selectedProduct.id,
++      name: selectedProduct.name,
++      category: selectedProduct.category,
++      tier: selectedProduct.tier,
++      price: selectedProduct.price,
++      chassisColor: selectedChassisColor,
++      strapColor: selectedStrapColor,
++      selectedFace: selectedWatchFace,
++    });
++    openCart();
++  };
++
++  const handleScrollToCatalog = () => {
++    const el = document.getElementById('catalog');
++    if (el) {
++      el.scrollIntoView({ behavior: 'smooth' });
++    }
++  };
++
++  return (
++    <div className="min-h-screen flex flex-col bg-[#F8F6FF] text-slate-900 selection:bg-purple-200 selection:text-purple-900">
++      {/* 1. Header Navigation */}
++      <Navbar
++        cartItemCount={totalItemsCount}
++        onOpenCart={openCart}
++        selectedCategory={activeCategory}
++        onSelectCategory={(cat) => {
++          setActiveCategory(cat);
++          handleScrollToCatalog();
++        }}
++        onLogoClick={() => {
++          if (typeof window !== 'undefined') {
++            window.scrollTo({ top: 0, behavior: 'smooth' });
++          }
++        }}
++      />
++
++      <main className="flex-1">
++        {/* 2. Hero 3D Interactive Studio Section */}
++        <section className="relative pt-6 pb-12 sm:pt-10 sm:pb-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
++          {/* Hero Header */}
++          <div className="text-center max-w-3xl mx-auto mb-8">
++            <div className="inline-flex items-center gap-2 mb-3">
++              <Badge variant="softCyan" size="md" dot pulse>
++                <Sparkles className="w-3.5 h-3.5 text-[#06B6D4] mr-0.5" />
++                3D Interactive Studio
++              </Badge>
++              <Badge variant="violet" size="md">
++                Procedural Three.js Engine
++              </Badge>
++            </div>
++            <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-slate-900">
++              Personalize Your Wearable in Real Time.
++            </h1>
++            <p className="text-sm sm:text-base text-slate-500 mt-3 leading-relaxed">
++              Explore 360° orbit rotation, test dynamic watch face layouts, customize titanium chassis finishes and strap colors, and simulate smart biosensor widgets.
++            </p>
++          </div>
++
++          {/* 3D Viewport Stage */}
++          <div className="mb-6">
++            <WatchViewer3D />
++          </div>
++
++          {/* Hardware Customizer Dock / Customizer Bar */}
++          <div className="p-5 sm:p-6 rounded-3xl bg-white/90 backdrop-blur-xl border border-purple-100 shadow-xl shadow-purple-500/5 space-y-6">
++            {/* Quick Model Selector Pills */}
++            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-5 border-b border-purple-100/80">
++              <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
++                <Sliders className="w-4 h-4 text-[#7C3AED]" />
++                <span>Select Hardware Model:</span>
++              </div>
++
++              <div className="flex items-center gap-1.5 overflow-x-auto py-1">
++                {PRODUCTS.map((prod) => {
++                  const isSelected = prod.id === selectedProductId;
++                  return (
++                    <button
++                      key={prod.id}
++                      onClick={() => setSelectedProductId(prod.id)}
++                      className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap ${
++                        isSelected
++                          ? 'bg-[#7C3AED] text-white shadow-sm shadow-purple-500/20'
++                          : 'bg-purple-50/70 text-slate-600 hover:text-slate-900 hover:bg-purple-100'
++                      }`}
++                    >
++                      <span>{prod.name}</span>
++                      <span className="ml-1.5 opacity-80 text-[10px]">
++                        {formatCurrency(prod.price)}
++                      </span>
++                    </button>
++                  );
++                })}
++              </div>
++            </div>
++
++            {/* Customization Options Grid: Chassis Finishes, Strap Colors, Watch Faces */}
++            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
++              {/* Option 1: Chassis Finish Swatches */}
++              <div className="space-y-2">
++                <div className="flex items-center justify-between text-xs">
++                  <span className="font-bold text-slate-700">Chassis Finish:</span>
++                  <span className="font-semibold text-[#7C3AED]">{selectedChassisColor.name}</span>
++                </div>
++                <div className="flex items-center gap-2">
++                  {selectedProduct.chassisColors.map((color) => {
++                    const isSelected = color.id === selectedChassisColor.id;
++                    return (
++                      <button
++                        key={color.id}
++                        type="button"
++                        onClick={() => setSelectedChassisColor(color)}
++                        title={color.name}
++                        className={`group relative flex items-center justify-center w-8 h-8 rounded-full border-2 transition-transform hover:scale-110 ${
++                          isSelected
++                            ? 'border-[#7C3AED] ring-2 ring-purple-400/30 scale-105'
++                            : 'border-slate-200 hover:border-purple-300'
++                        }`}
++                      >
++                        <span
++                          className="w-full h-full rounded-full shadow-inner"
++                          style={{ backgroundColor: color.hex }}
++                        />
++                        {isSelected && (
++                          <Check className="absolute w-3.5 h-3.5 text-white stroke-[3] drop-shadow-sm" />
++                        )}
++                      </button>
++                    );
++                  })}
++                </div>
++              </div>
++
++              {/* Option 2: Strap Color Swatches */}
++              <div className="space-y-2">
++                <div className="flex items-center justify-between text-xs">
++                  <span className="font-bold text-slate-700">Strap Color:</span>
++                  <span className="font-semibold text-[#06B6D4]">{selectedStrapColor.name}</span>
++                </div>
++                <div className="flex items-center gap-2">
++                  {selectedProduct.strapColors.map((color) => {
++                    const isSelected = color.id === selectedStrapColor.id;
++                    return (
++                      <button
++                        key={color.id}
++                        type="button"
++                        onClick={() => setSelectedStrapColor(color)}
++                        title={color.name}
++                        className={`group relative flex items-center justify-center w-8 h-8 rounded-full border-2 transition-transform hover:scale-110 ${
++                          isSelected
++                            ? 'border-[#06B6D4] ring-2 ring-cyan-400/30 scale-105'
++                            : 'border-slate-200 hover:border-cyan-300'
++                        }`}
++                      >
++                        <span
++                          className="w-full h-full rounded-full shadow-inner"
++                          style={{ backgroundColor: color.hex }}
++                        />
++                        {isSelected && (
++                          <Check className="absolute w-3.5 h-3.5 text-white stroke-[3] drop-shadow-sm" />
++                        )}
++                      </button>
++                    );
++                  })}
++                </div>
++              </div>
++
++              {/* Option 3: Dynamic Watch Face Selector */}
++              <div className="space-y-2">
++                <div className="flex items-center justify-between text-xs">
++                  <span className="font-bold text-slate-700">Watch Face:</span>
++                  <span className="font-semibold text-slate-900 capitalize">{selectedWatchFace}</span>
++                </div>
++                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
++                  {WATCH_FACES.map((face) => {
++                    const isSelected = face.id === selectedWatchFace;
++                    return (
++                      <button
++                        key={face.id}
++                        type="button"
++                        onClick={() => setSelectedWatchFace(face.id)}
++                        className={`px-2 py-1.5 rounded-xl text-xs font-bold text-center transition-all ${
++                          isSelected
++                            ? 'bg-[#7C3AED] text-white shadow-sm'
++                            : 'bg-purple-50/60 hover:bg-purple-100 text-slate-600'
++                        }`}
++                      >
++                        {face.name}
++                      </button>
++                    );
++                  })}
++                </div>
++              </div>
++            </div>
++
++            {/* Bottom Customizer Bar: Price & Add Customized to Cart Button */}
++            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-5 border-t border-purple-100/80">
++              <div className="flex items-baseline gap-3">
++                <span className="text-2xl sm:text-3xl font-black text-slate-900">
++                  {formatCurrency(selectedProduct.price)}
++                </span>
++                {selectedProduct.originalPrice && (
++                  <span className="text-sm font-semibold line-through text-slate-400">
++                    {formatCurrency(selectedProduct.originalPrice)}
++                  </span>
++                )}
++                <Badge variant="violet" size="sm">
++                  {formatTierName(selectedProduct.tier)}
++                </Badge>
++              </div>
++
++              <div className="flex items-center gap-3">
++                <Button
++                  onClick={handleScrollToCatalog}
++                  variant="outline"
++                  size="md"
++                  icon={<Layers className="w-4 h-4 text-[#7C3AED]" />}
++                >
++                  Browse Catalog
++                </Button>
++
++                <Button
++                  onClick={handleAddCustomizedToCart}
++                  variant="primary"
++                  size="md"
++                  icon={<ShoppingBag className="w-4 h-4" />}
++                  className="shadow-lg shadow-purple-500/25 active:scale-95 px-6"
++                >
++                  Add Customized to Cart
++                </Button>
++              </div>
++            </div>
++          </div>
++        </section>
++
++        {/* 3. Product Catalog Section */}
++        <ProductCatalog
++          initialCategory={activeCategory}
++          onAddToCart={(product) => {
++            addItem({
++              productId: product.id,
++              name: product.name,
++              category: product.category,
++              tier: product.tier,
++              price: product.price,
++              chassisColor: product.chassisColors[0],
++              strapColor: product.strapColors[0],
++              selectedFace: product.defaultFace,
++            });
++            openCart();
++          }}
++        />
++      </main>
++
++      {/* 4. Slide-over Shopping Cart Drawer */}
++      <CartDrawer />
++
++      {/* 5. Two-Step Simulated Checkout Modal */}
++      <CheckoutModal />
++
++      {/* 6. Footer */}
++      <Footer />
++    </div>
++  );
++};
++
++export const App: React.FC = () => {
++  return (
++    <ViewerProvider>
++      <CartProvider>
++        <AppContent />
++      </CartProvider>
++    </ViewerProvider>
++  );
++};
++
++export default App;
+diff --git a/src/components/cart/CartDrawer.tsx b/src/components/cart/CartDrawer.tsx
+new file mode 100644
+index 0000000..917cf98
+--- /dev/null
++++ b/src/components/cart/CartDrawer.tsx
+@@ -0,0 +1,332 @@
++import React, { useState, useEffect } from 'react';
++import {
++  X,
++  ShoppingBag,
++  ArrowRight,
++  Sparkles,
++  Tag,
++  CheckCircle2,
++  Trash2,
++  Truck,
++  ShieldCheck,
++} from 'lucide-react';
++import { CartItem } from '../../types';
++import { useCart, calculateCartTotals, SHIPPING_THRESHOLD } from '../../context/CartContext';
++import { CartItemRow } from './CartItemRow';
++import { Button } from '../common/Button';
++import { Badge } from '../common/Badge';
++import { formatCurrency } from '../../utils/formatters';
++
++export interface CartDrawerProps {
++  isOpen?: boolean;
++  onClose?: () => void;
++  items?: CartItem[];
++  onUpdateQuantity?: (id: string, quantity: number) => void;
++  onRemoveItem?: (id: string) => void;
++  onClearCart?: () => void;
++  onCheckout?: () => void;
++  onApplyCoupon?: (code: string) => { success: boolean; message: string };
++  onRemoveCoupon?: () => void;
++  appliedCoupon?: string | null;
++  className?: string;
++}
++
++function useSafeCart() {
++  try {
++    return useCart();
++  } catch {
++    return null;
++  }
++}
++
++export const CartDrawer: React.FC<CartDrawerProps> = ({
++  isOpen: propIsOpen,
++  onClose: propOnClose,
++  items: propItems,
++  onUpdateQuantity: propOnUpdateQuantity,
++  onRemoveItem: propOnRemoveItem,
++  onClearCart: propOnClearCart,
++  onCheckout: propOnCheckout,
++  onApplyCoupon: propOnApplyCoupon,
++  onRemoveCoupon: propOnRemoveCoupon,
++  appliedCoupon: propAppliedCoupon,
++  className = '',
++}) => {
++  const cart = useSafeCart();
++
++  const isOpen = propIsOpen !== undefined ? propIsOpen : (cart?.isCartOpen ?? false);
++  const onClose = propOnClose || cart?.closeCart || (() => {});
++  const items = propItems !== undefined ? propItems : (cart?.items ?? []);
++  const onUpdateQuantity = propOnUpdateQuantity || cart?.updateQuantity || (() => {});
++  const onRemoveItem = propOnRemoveItem || cart?.removeItem || (() => {});
++  const onClearCart = propOnClearCart || cart?.clearCart || (() => {});
++  const onCheckout = propOnCheckout || cart?.openCheckout || (() => {});
++  const onApplyCoupon = propOnApplyCoupon || cart?.applyCoupon || (() => ({ success: false, message: '' }));
++  const onRemoveCoupon = propOnRemoveCoupon || cart?.removeCoupon || (() => {});
++  const appliedCoupon = propAppliedCoupon !== undefined ? propAppliedCoupon : (cart?.appliedCoupon ?? null);
++
++  const [couponInput, setCouponInput] = useState('');
++  const [couponFeedback, setCouponFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
++
++  // Calculate live totals
++  const totals = calculateCartTotals(items, appliedCoupon);
++
++  // Handle ESC key to close drawer
++  useEffect(() => {
++    if (!isOpen) return;
++
++    const handleKeyDown = (e: KeyboardEvent) => {
++      if (e.key === 'Escape') {
++        onClose();
++      }
++    };
++
++    window.addEventListener('keydown', handleKeyDown);
++    return () => window.removeEventListener('keydown', handleKeyDown);
++  }, [isOpen, onClose]);
++
++  const handleApplyCoupon = (e: React.FormEvent) => {
++    e.preventDefault();
++    if (!couponInput.trim()) return;
++
++    const res = onApplyCoupon(couponInput.trim());
++    if (res.success) {
++      setCouponFeedback({ type: 'success', message: res.message });
++      setCouponInput('');
++    } else {
++      setCouponFeedback({ type: 'error', message: res.message });
++    }
++  };
++
++  const handleRemoveCoupon = () => {
++    onRemoveCoupon();
++    setCouponFeedback(null);
++  };
++
++  if (!isOpen) return null;
++
++  const freeShippingProgress = Math.min(100, Math.round((totals.subtotal / SHIPPING_THRESHOLD) * 100));
++
++  return (
++    <div
++      role="dialog"
++      aria-modal="true"
++      aria-labelledby="cart-drawer-title"
++      className="fixed inset-0 z-50 overflow-hidden"
++    >
++      {/* Backdrop */}
++      <div
++        onClick={onClose}
++        className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity duration-300 animate-in fade-in"
++      />
++
++      {/* Slide-over Drawer Panel */}
++      <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
++        <div
++          className={`w-screen max-w-md bg-white/95 backdrop-blur-xl border-l border-purple-100/80 shadow-2xl flex flex-col justify-between animate-in slide-in-from-right duration-300 ${className}`}
++        >
++          {/* 1. Header */}
++          <div className="p-4 sm:p-6 border-b border-purple-100/80 flex items-center justify-between bg-white/60">
++            <div className="flex items-center gap-2.5">
++              <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-purple-100 text-[#7C3AED]">
++                <ShoppingBag className="w-5 h-5" />
++              </div>
++              <div>
++                <h3 id="cart-drawer-title" className="text-base sm:text-lg font-black text-slate-900">
++                  Shopping Cart
++                </h3>
++                <span className="text-xs text-slate-500 font-medium">
++                  {totals.totalItemsCount} {totals.totalItemsCount === 1 ? 'device' : 'devices'} in bag
++                </span>
++              </div>
++            </div>
++
++            <button
++              onClick={onClose}
++              aria-label="Close cart"
++              className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-purple-50 transition-colors"
++            >
++              <X className="w-5 h-5" />
++            </button>
++          </div>
++
++          {/* 2. Free Shipping Progress Bar (if items exist) */}
++          {items.length > 0 && (
++            <div className="px-4 sm:px-6 py-3 bg-purple-50/50 border-b border-purple-100/60">
++              <div className="flex items-center justify-between text-xs mb-1.5">
++                <span className="flex items-center gap-1.5 font-bold text-slate-700">
++                  <Truck className="w-3.5 h-3.5 text-[#7C3AED]" />
++                  {totals.isFreeShipping ? (
++                    <span className="text-emerald-600 flex items-center gap-1">
++                      <Sparkles className="w-3 h-3" /> Free Shipping Unlocked!
++                    </span>
++                  ) : (
++                    <span>{`Add ${formatCurrency(totals.amountToFreeShipping)} for Free Shipping`}</span>
++                  )}
++                </span>
++                <span className="font-semibold text-slate-500">{freeShippingProgress}%</span>
++              </div>
++              <div className="w-full h-1.5 rounded-full bg-purple-100 overflow-hidden">
++                <div
++                  className="h-full rounded-full bg-gradient-to-r from-[#7C3AED] to-[#06B6D4] transition-all duration-300"
++                  style={{ width: `${freeShippingProgress}%` }}
++                />
++              </div>
++            </div>
++          )}
++
++          {/* 3. Drawer Scrollable Body */}
++          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
++            {items.length === 0 ? (
++              <div className="h-full flex flex-col items-center justify-center text-center py-12 px-4">
++                <div className="relative flex items-center justify-center w-20 h-20 rounded-3xl bg-purple-50 border border-purple-100 text-[#7C3AED] mb-4">
++                  <ShoppingBag className="w-10 h-10 stroke-[1.5]" />
++                  <span className="absolute -top-1 -right-1 flex h-4 w-4">
++                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#06B6D4] opacity-75" />
++                    <span className="relative inline-flex rounded-full h-4 w-4 bg-[#06B6D4]" />
++                  </span>
++                </div>
++                <h4 className="text-base font-bold text-slate-900">Your cart is empty</h4>
++                <p className="text-xs text-slate-500 max-w-xs mt-1 mb-6 leading-relaxed">
++                  Explore our futuristic smartwatches and fitness bands. Customize finishes and preview in interactive 3D studio!
++                </p>
++                <Button onClick={onClose} variant="primary" size="md">
++                  Explore Wearables
++                </Button>
++              </div>
++            ) : (
++              <div className="space-y-3">
++                {items.map((item) => (
++                  <CartItemRow
++                    key={item.id}
++                    item={item}
++                    onUpdateQuantity={onUpdateQuantity}
++                    onRemove={onRemoveItem}
++                  />
++                ))}
++              </div>
++            )}
++          </div>
++
++          {/* 4. Voucher Code & Totals Footer (Only if items > 0) */}
++          {items.length > 0 && (
++            <div className="p-4 sm:p-6 border-t border-purple-100/80 bg-white/80 space-y-4">
++              {/* Promo Code Simulator */}
++              <div className="space-y-2">
++                {appliedCoupon ? (
++                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-purple-50 border border-purple-200 text-xs">
++                    <div className="flex items-center gap-2">
++                      <Tag className="w-3.5 h-3.5 text-[#7C3AED]" />
++                      <span className="font-bold text-[#7C3AED]">{appliedCoupon}</span>
++                      <span className="text-slate-500">applied</span>
++                    </div>
++                    <button
++                      type="button"
++                      onClick={handleRemoveCoupon}
++                      className="text-slate-400 hover:text-rose-600 font-semibold"
++                    >
++                      Remove
++                    </button>
++                  </div>
++                ) : (
++                  <form onSubmit={handleApplyCoupon} className="flex gap-2">
++                    <input
++                      type="text"
++                      value={couponInput}
++                      onChange={(e) => setCouponInput(e.target.value)}
++                      placeholder="Promo code (e.g. HORIZON10)"
++                      aria-label="Promo or Voucher Code"
++                      className="flex-1 px-3 py-1.5 text-xs rounded-xl border border-purple-200 focus:outline-none focus:ring-2 focus:ring-[#7C3AED] uppercase placeholder:normal-case"
++                    />
++                    <Button type="submit" variant="subtle" size="sm">
++                      Apply
++                    </Button>
++                  </form>
++                )}
++
++                {couponFeedback && (
++                  <p
++                    className={`text-[11px] font-medium ${
++                      couponFeedback.type === 'success' ? 'text-emerald-600' : 'text-rose-600'
++                    }`}
++                  >
++                    {couponFeedback.message}
++                  </p>
++                )}
++              </div>
++
++              {/* Price Breakdown */}
++              <div className="space-y-1.5 pt-2 text-xs border-t border-purple-100/60">
++                <div className="flex items-center justify-between text-slate-600">
++                  <span>Subtotal</span>
++                  <span className="font-semibold text-slate-900">{formatCurrency(totals.subtotal)}</span>
++                </div>
++
++                {totals.discount > 0 && (
++                  <div className="flex items-center justify-between text-emerald-600 font-medium">
++                    <span>{`Discount (${appliedCoupon})`}</span>
++                    <span>{`-${formatCurrency(totals.discount)}`}</span>
++                  </div>
++                )}
++
++                <div className="flex items-center justify-between text-slate-600">
++                  <span>Standard Shipping</span>
++                  <span>
++                    {totals.isFreeShipping ? (
++                      <span className="font-bold text-emerald-600 uppercase tracking-wider text-[11px]">
++                        FREE
++                      </span>
++                    ) : (
++                      formatCurrency(totals.shippingFee)
++                    )}
++                  </span>
++                </div>
++
++                <div className="flex items-center justify-between text-slate-600">
++                  <span>Estimated Tax (8%)</span>
++                  <span>{formatCurrency(totals.estimatedTax)}</span>
++                </div>
++
++                <div className="flex items-center justify-between pt-2 border-t border-purple-100 text-sm font-black text-slate-900">
++                  <span>Estimated Total</span>
++                  <span className="text-lg text-[#7C3AED] font-black">
++                    {formatCurrency(totals.grandTotal)}
++                  </span>
++                </div>
++              </div>
++
++              {/* Actions: Checkout & Clear Cart */}
++              <div className="space-y-2 pt-1">
++                <Button
++                  onClick={onCheckout}
++                  variant="primary"
++                  size="lg"
++                  fullWidth
++                  icon={<ArrowRight className="w-4 h-4" />}
++                  iconPosition="right"
++                  className="shadow-lg shadow-purple-500/20"
++                >
++                  Proceed to Checkout
++                </Button>
++
++                <div className="flex items-center justify-between px-1 text-xs text-slate-400">
++                  <div className="flex items-center gap-1">
++                    <ShieldCheck className="w-3.5 h-3.5 text-slate-400" />
++                    <span>Secure simulated checkout</span>
++                  </div>
++                  <button
++                    type="button"
++                    onClick={onClearCart}
++                    className="hover:text-rose-500 transition-colors"
++                  >
++                    Clear Cart
++                  </button>
++                </div>
++              </div>
++            </div>
++          )}
++        </div>
++      </div>
++    </div>
++  );
++};
+diff --git a/src/components/cart/CartItemRow.tsx b/src/components/cart/CartItemRow.tsx
+new file mode 100644
+index 0000000..b58fa0b
+--- /dev/null
++++ b/src/components/cart/CartItemRow.tsx
+@@ -0,0 +1,134 @@
++import React from 'react';
++import { Minus, Plus, Trash2, Watch } from 'lucide-react';
++import { CartItem } from '../../types';
++import { formatCurrency, formatTierName } from '../../utils/formatters';
++import { Badge } from '../common/Badge';
++
++export interface CartItemRowProps {
++  item: CartItem;
++  onUpdateQuantity: (id: string, quantity: number) => void;
++  onRemove: (id: string) => void;
++  className?: string;
++}
++
++export const CartItemRow: React.FC<CartItemRowProps> = ({
++  item,
++  onUpdateQuantity,
++  onRemove,
++  className = '',
++}) => {
++  const lineTotal = item.price * item.quantity;
++  const faceDisplayName = item.selectedFace.charAt(0).toUpperCase() + item.selectedFace.slice(1);
++
++  return (
++    <div
++      className={`group relative flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-white/90 backdrop-blur-md border border-purple-100/80 hover:border-purple-200 shadow-sm hover:shadow-md transition-all duration-200 ${className}`}
++    >
++      {/* Device Info & Swatches */}
++      <div className="flex items-start gap-3.5 min-w-0">
++        {/* Device Mini Icon Thumbnail */}
++        <div className="relative flex items-center justify-center w-12 h-12 rounded-xl bg-purple-50/80 border border-purple-100 shrink-0 text-[#7C3AED]">
++          <Watch className="w-6 h-6" />
++          <span
++            className="absolute bottom-1 right-1 w-2.5 h-2.5 rounded-full border border-white shadow-xs"
++            style={{ backgroundColor: item.chassisColor.hex }}
++            title={`Chassis: ${item.chassisColor.name}`}
++          />
++        </div>
++
++        {/* Text Details */}
++        <div className="flex flex-col min-w-0">
++          <div className="flex items-center gap-2 flex-wrap">
++            <h4 className="text-sm font-bold text-slate-900 truncate" title={item.name}>
++              {item.name}
++            </h4>
++            <Badge variant="neutral" size="sm">
++              {formatTierName(item.tier)}
++            </Badge>
++          </div>
++
++          {/* Configuration Breakdown: Chassis, Strap, Watch Face */}
++          <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-1 text-xs text-slate-500">
++            {/* Chassis Swatch */}
++            <div className="flex items-center gap-1.5" title={`Chassis finish: ${item.chassisColor.name}`}>
++              <span
++                className="w-3 h-3 rounded-full border border-white shadow-xs ring-1 ring-slate-200 shrink-0"
++                style={{ backgroundColor: item.chassisColor.hex }}
++              />
++              <span className="truncate max-w-[90px]">{item.chassisColor.name}</span>
++            </div>
++
++            <span className="text-slate-300">•</span>
++
++            {/* Strap Swatch */}
++            <div className="flex items-center gap-1.5" title={`Strap color: ${item.strapColor.name}`}>
++              <span
++                className="w-3 h-3 rounded-full border border-white shadow-xs ring-1 ring-slate-200 shrink-0"
++                style={{ backgroundColor: item.strapColor.hex }}
++              />
++              <span className="truncate max-w-[90px]">{item.strapColor.name}</span>
++            </div>
++
++            <span className="text-slate-300">•</span>
++
++            {/* Watch Face */}
++            <div className="flex items-center gap-1 text-slate-600 font-medium" title={`Watch face: ${faceDisplayName}`}>
++              <span>{faceDisplayName} Face</span>
++            </div>
++          </div>
++
++          {/* Unit Price */}
++          <div className="flex items-center gap-2 mt-1.5 text-xs text-slate-500">
++            <span className="font-semibold text-slate-700">{formatCurrency(item.price)} each</span>
++          </div>
++        </div>
++      </div>
++
++      {/* Right Controls: Quantity & Price */}
++      <div className="flex items-center justify-between sm:justify-end gap-4 pt-2 sm:pt-0 border-t sm:border-t-0 border-purple-50">
++        {/* Quantity Controls */}
++        <div className="flex items-center gap-1.5 p-1 rounded-full bg-purple-50/70 border border-purple-100">
++          <button
++            type="button"
++            onClick={() => onUpdateQuantity(item.id, item.quantity - 1)}
++            aria-label="Decrease quantity"
++            className="flex items-center justify-center w-6 h-6 rounded-full bg-white text-slate-600 hover:text-[#7C3AED] hover:shadow-xs transition-all active:scale-90"
++          >
++            <Minus className="w-3 h-3" />
++          </button>
++
++          <span className="w-6 text-center text-xs font-bold text-slate-800 select-none">
++            {item.quantity}
++          </span>
++
++          <button
++            type="button"
++            onClick={() => onUpdateQuantity(item.id, item.quantity + 1)}
++            aria-label="Increase quantity"
++            className="flex items-center justify-center w-6 h-6 rounded-full bg-white text-slate-600 hover:text-[#7C3AED] hover:shadow-xs transition-all active:scale-90"
++          >
++            <Plus className="w-3 h-3" />
++          </button>
++        </div>
++
++        {/* Line Total */}
++        <div className="text-right min-w-[70px]">
++          <span className="text-sm font-black text-slate-900">
++            {formatCurrency(lineTotal)}
++          </span>
++        </div>
++
++        {/* Remove Button */}
++        <button
++          type="button"
++          onClick={() => onRemove(item.id)}
++          aria-label={`Remove ${item.name}`}
++          className="p-1.5 rounded-xl text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-colors"
++          title="Remove item"
++        >
++          <Trash2 className="w-4 h-4" />
++        </button>
++      </div>
++    </div>
++  );
++};
+diff --git a/src/components/cart/CheckoutModal.tsx b/src/components/cart/CheckoutModal.tsx
+new file mode 100644
+index 0000000..4d39e04
+--- /dev/null
++++ b/src/components/cart/CheckoutModal.tsx
+@@ -0,0 +1,600 @@
++import React, { useState, useEffect } from 'react';
++import {
++  X,
++  CheckCircle2,
++  Lock,
++  CreditCard,
++  Truck,
++  Calendar,
++  PackageCheck,
++  ShieldCheck,
++  ShoppingBag,
++  Sparkles,
++  ArrowRight,
++  User,
++  Mail,
++  MapPin,
++  Smartphone,
++} from 'lucide-react';
++import { CartItem, OrderDetails } from '../../types';
++import { useCart, calculateCartTotals } from '../../context/CartContext';
++import { Button } from '../common/Button';
++import { Badge } from '../common/Badge';
++import { formatCurrency, formatDate } from '../../utils/formatters';
++
++export type PaymentMethod = 'apple_pay' | 'credit_card' | 'cod';
++
++export interface CheckoutModalProps {
++  isOpen?: boolean;
++  onClose?: () => void;
++  items?: CartItem[];
++  appliedCoupon?: string | null;
++  onOrderComplete?: (order: OrderDetails) => void;
++  step?: 1 | 2;
++  completedOrder?: OrderDetails | null;
++  className?: string;
++}
++
++export function generateOrderId(): string {
++  const year = new Date().getFullYear();
++  const randomNum = Math.floor(10000 + Math.random() * 90000);
++  return `ORD-${year}-${randomNum}`;
++}
++
++export function getEstimatedDeliveryDate(daysToAdd: number = 4): string {
++  const date = new Date();
++  date.setDate(date.getDate() + daysToAdd);
++  return formatDate(date);
++}
++
++function useSafeCart() {
++  try {
++    return useCart();
++  } catch {
++    return null;
++  }
++}
++
++export const CheckoutModal: React.FC<CheckoutModalProps> = ({
++  isOpen: propIsOpen,
++  onClose: propOnClose,
++  items: propItems,
++  appliedCoupon: propAppliedCoupon,
++  onOrderComplete: propOnOrderComplete,
++  step: propStep = 1,
++  completedOrder: propCompletedOrder = null,
++  className = '',
++}) => {
++  const cart = useSafeCart();
++
++  const isOpen = propIsOpen !== undefined ? propIsOpen : (cart?.isCheckoutOpen ?? false);
++  const onClose = propOnClose || cart?.closeCheckout || (() => {});
++  const items = propItems !== undefined ? propItems : (cart?.items ?? []);
++  const appliedCoupon = propAppliedCoupon !== undefined ? propAppliedCoupon : (cart?.appliedCoupon ?? null);
++
++  const [currentStep, setCurrentStep] = useState<1 | 2>(propStep);
++  const [completedOrder, setCompletedOrder] = useState<OrderDetails | null>(propCompletedOrder);
++
++  // Form Fields
++  const [fullName, setFullName] = useState('');
++  const [email, setEmail] = useState('');
++  const [address, setAddress] = useState('');
++  const [city, setCity] = useState('');
++  const [zipCode, setZipCode] = useState('');
++  const [country, setCountry] = useState('United States');
++  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('apple_pay');
++
++  // Credit Card mock fields
++  const [cardNumber, setCardNumber] = useState('4242 •••• •••• 4242');
++  const [cardExp, setCardExp] = useState('12/28');
++  const [cardCvc, setCardCvc] = useState('888');
++
++  // Form Validation & Submitting
++  const [errors, setErrors] = useState<Record<string, string>>({});
++  const [isSubmitting, setIsSubmitting] = useState(false);
++
++  // Sync props when opening or resetting
++  useEffect(() => {
++    if (propStep) setCurrentStep(propStep);
++    if (propCompletedOrder) setCompletedOrder(propCompletedOrder);
++  }, [propStep, propCompletedOrder, isOpen]);
++
++  // Handle ESC key
++  useEffect(() => {
++    if (!isOpen) return;
++    const handleKeyDown = (e: KeyboardEvent) => {
++      if (e.key === 'Escape') onClose();
++    };
++    window.addEventListener('keydown', handleKeyDown);
++    return () => window.removeEventListener('keydown', handleKeyDown);
++  }, [isOpen, onClose]);
++
++  const totals = calculateCartTotals(items, appliedCoupon);
++
++  const validate = (): boolean => {
++    const errs: Record<string, string> = {};
++    if (!fullName.trim()) errs.fullName = 'Full name is required';
++    if (!email.trim()) {
++      errs.email = 'Email address is required';
++    } else if (!/^\S+@\S+\.\S+$/.test(email)) {
++      errs.email = 'Please enter a valid email address';
++    }
++    if (!address.trim()) errs.address = 'Street address is required';
++    if (!city.trim()) errs.city = 'City is required';
++    if (!zipCode.trim()) errs.zipCode = 'Postal / ZIP code is required';
++
++    if (paymentMethod === 'credit_card') {
++      if (!cardNumber.trim()) errs.cardNumber = 'Card number is required';
++      if (!cardExp.trim()) errs.cardExp = 'Expiry date is required';
++      if (!cardCvc.trim()) errs.cardCvc = 'CVC is required';
++    }
++
++    setErrors(errs);
++    return Object.keys(errs).length === 0;
++  };
++
++  const handlePlaceOrder = (e: React.FormEvent) => {
++    e.preventDefault();
++    if (!validate()) return;
++
++    setIsSubmitting(true);
++
++    // Simulate fast processing
++    setTimeout(() => {
++      const order: OrderDetails = {
++        orderId: generateOrderId(),
++        customerName: fullName.trim(),
++        email: email.trim(),
++        address: `${address.trim()}, ${city.trim()}, ${zipCode.trim()}, ${country}`,
++        items: [...items],
++        subtotal: totals.subtotal,
++        shipping: totals.shippingFee,
++        discount: totals.discount,
++        total: totals.grandTotal,
++        createdAt: new Date().toISOString(),
++      };
++
++      setCompletedOrder(order);
++      setCurrentStep(2);
++      setIsSubmitting(false);
++
++      if (cart) {
++        cart.setLastOrder(order);
++        cart.clearCart();
++      }
++
++      if (propOnOrderComplete) {
++        propOnOrderComplete(order);
++      }
++    }, 450);
++  };
++
++  const handleResetAndClose = () => {
++    setCurrentStep(1);
++    setCompletedOrder(null);
++    setFullName('');
++    setEmail('');
++    setAddress('');
++    setCity('');
++    setZipCode('');
++    setErrors({});
++    onClose();
++  };
++
++  if (!isOpen) return null;
++
++  return (
++    <div
++      role="dialog"
++      aria-modal="true"
++      aria-labelledby="checkout-modal-title"
++      className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-3 sm:p-6"
++    >
++      {/* Backdrop */}
++      <div
++        onClick={currentStep === 2 ? handleResetAndClose : onClose}
++        className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm transition-opacity duration-200 animate-in fade-in"
++      />
++
++      {/* Modal Dialog Card */}
++      <div
++        className={`relative w-full max-w-3xl bg-white rounded-3xl shadow-2xl border border-purple-100 overflow-hidden z-10 animate-in zoom-in-95 duration-200 my-auto ${className}`}
++      >
++        {/* Modal Top Bar */}
++        <div className="px-6 py-4 border-b border-purple-100/80 flex items-center justify-between bg-gradient-to-r from-purple-50/70 via-white to-cyan-50/50">
++          <div className="flex items-center gap-3">
++            <div className="flex items-center justify-center w-8 h-8 rounded-xl bg-gradient-to-tr from-[#7C3AED] to-[#06B6D4] text-white shadow-sm">
++              <ShieldCheck className="w-4 h-4" />
++            </div>
++            <div>
++              <h3 id="checkout-modal-title" className="text-base font-black text-slate-900">
++                Simulated Checkout
++              </h3>
++              <span className="text-xs text-slate-500 font-medium">
++                {currentStep === 1 ? 'Step 1 of 2: Shipping & Payment' : 'Step 2 of 2: Order Confirmed'}
++              </span>
++            </div>
++          </div>
++
++          <button
++            onClick={currentStep === 2 ? handleResetAndClose : onClose}
++            aria-label="Close checkout"
++            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-white transition-colors"
++          >
++            <X className="w-5 h-5" />
++          </button>
++        </div>
++
++        {/* STEP 1: Shipping and Payment Form */}
++        {currentStep === 1 && (
++          <form onSubmit={handlePlaceOrder} className="p-6">
++            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
++              {/* Left Column: Form Fields */}
++              <div className="lg:col-span-7 space-y-6">
++                {/* 1. Shipping Details */}
++                <div>
++                  <div className="flex items-center gap-2 mb-3">
++                    <User className="w-4 h-4 text-[#7C3AED]" />
++                    <h4 className="text-sm font-bold text-slate-900">Customer & Shipping Info</h4>
++                  </div>
++
++                  <div className="space-y-3">
++                    {/* Full Name */}
++                    <div>
++                      <label htmlFor="checkout-name" className="block text-xs font-semibold text-slate-700 mb-1">
++                        Full Name *
++                      </label>
++                      <input
++                        id="checkout-name"
++                        type="text"
++                        value={fullName}
++                        onChange={(e) => setFullName(e.target.value)}
++                        placeholder="e.g. Alex Rivera"
++                        className={`w-full px-3.5 py-2 text-xs rounded-xl border ${
++                          errors.fullName ? 'border-rose-400 ring-1 ring-rose-300' : 'border-purple-200'
++                        } focus:outline-none focus:ring-2 focus:ring-[#7C3AED]`}
++                      />
++                      {errors.fullName && (
++                        <p className="text-[11px] text-rose-500 mt-1">{errors.fullName}</p>
++                      )}
++                    </div>
++
++                    {/* Email */}
++                    <div>
++                      <label htmlFor="checkout-email" className="block text-xs font-semibold text-slate-700 mb-1">
++                        Email Address *
++                      </label>
++                      <input
++                        id="checkout-email"
++                        type="email"
++                        value={email}
++                        onChange={(e) => setEmail(e.target.value)}
++                        placeholder="e.g. alex.rivera@example.com"
++                        className={`w-full px-3.5 py-2 text-xs rounded-xl border ${
++                          errors.email ? 'border-rose-400 ring-1 ring-rose-300' : 'border-purple-200'
++                        } focus:outline-none focus:ring-2 focus:ring-[#7C3AED]`}
++                      />
++                      {errors.email && (
++                        <p className="text-[11px] text-rose-500 mt-1">{errors.email}</p>
++                      )}
++                    </div>
++
++                    {/* Street Address */}
++                    <div>
++                      <label htmlFor="checkout-address" className="block text-xs font-semibold text-slate-700 mb-1">
++                        Street Address *
++                      </label>
++                      <input
++                        id="checkout-address"
++                        type="text"
++                        value={address}
++                        onChange={(e) => setAddress(e.target.value)}
++                        placeholder="e.g. 742 Evergreen Terrace"
++                        className={`w-full px-3.5 py-2 text-xs rounded-xl border ${
++                          errors.address ? 'border-rose-400 ring-1 ring-rose-300' : 'border-purple-200'
++                        } focus:outline-none focus:ring-2 focus:ring-[#7C3AED]`}
++                      />
++                      {errors.address && (
++                        <p className="text-[11px] text-rose-500 mt-1">{errors.address}</p>
++                      )}
++                    </div>
++
++                    {/* City & ZIP Code Grid */}
++                    <div className="grid grid-cols-2 gap-3">
++                      <div>
++                        <label htmlFor="checkout-city" className="block text-xs font-semibold text-slate-700 mb-1">
++                          City *
++                        </label>
++                        <input
++                          id="checkout-city"
++                          type="text"
++                          value={city}
++                          onChange={(e) => setCity(e.target.value)}
++                          placeholder="e.g. Springfield"
++                          className={`w-full px-3.5 py-2 text-xs rounded-xl border ${
++                            errors.city ? 'border-rose-400 ring-1 ring-rose-300' : 'border-purple-200'
++                          } focus:outline-none focus:ring-2 focus:ring-[#7C3AED]`}
++                        />
++                        {errors.city && (
++                          <p className="text-[11px] text-rose-500 mt-1">{errors.city}</p>
++                        )}
++                      </div>
++
++                      <div>
++                        <label htmlFor="checkout-zip" className="block text-xs font-semibold text-slate-700 mb-1">
++                          Postal / ZIP Code *
++                        </label>
++                        <input
++                          id="checkout-zip"
++                          type="text"
++                          value={zipCode}
++                          onChange={(e) => setZipCode(e.target.value)}
++                          placeholder="e.g. 97477"
++                          className={`w-full px-3.5 py-2 text-xs rounded-xl border ${
++                            errors.zipCode ? 'border-rose-400 ring-1 ring-rose-300' : 'border-purple-200'
++                          } focus:outline-none focus:ring-2 focus:ring-[#7C3AED]`}
++                        />
++                        {errors.zipCode && (
++                          <p className="text-[11px] text-rose-500 mt-1">{errors.zipCode}</p>
++                        )}
++                      </div>
++                    </div>
++                  </div>
++                </div>
++
++                {/* 2. Simulated Payment Options */}
++                <div>
++                  <div className="flex items-center gap-2 mb-3">
++                    <CreditCard className="w-4 h-4 text-[#7C3AED]" />
++                    <h4 className="text-sm font-bold text-slate-900">Simulated Payment Method</h4>
++                  </div>
++
++                  <div className="grid grid-cols-3 gap-2.5 mb-3">
++                    {/* Apple Pay */}
++                    <button
++                      type="button"
++                      onClick={() => setPaymentMethod('apple_pay')}
++                      className={`flex flex-col items-center justify-center p-3 rounded-2xl border text-center transition-all ${
++                        paymentMethod === 'apple_pay'
++                          ? 'border-[#7C3AED] bg-purple-50/80 ring-2 ring-purple-400/20 text-[#7C3AED]'
++                          : 'border-purple-100 hover:border-purple-200 bg-white text-slate-700'
++                      }`}
++                    >
++                      <Smartphone className="w-5 h-5 mb-1 text-slate-900" />
++                      <span className="text-xs font-bold">Apple Pay</span>
++                      <span className="text-[10px] text-slate-400 mt-0.5">Instant 1-Click</span>
++                    </button>
++
++                    {/* Credit Card */}
++                    <button
++                      type="button"
++                      onClick={() => setPaymentMethod('credit_card')}
++                      className={`flex flex-col items-center justify-center p-3 rounded-2xl border text-center transition-all ${
++                        paymentMethod === 'credit_card'
++                          ? 'border-[#7C3AED] bg-purple-50/80 ring-2 ring-purple-400/20 text-[#7C3AED]'
++                          : 'border-purple-100 hover:border-purple-200 bg-white text-slate-700'
++                      }`}
++                    >
++                      <CreditCard className="w-5 h-5 mb-1 text-slate-900" />
++                      <span className="text-xs font-bold">Credit Card</span>
++                      <span className="text-[10px] text-slate-400 mt-0.5">Visa / Mastercard</span>
++                    </button>
++
++                    {/* COD */}
++                    <button
++                      type="button"
++                      onClick={() => setPaymentMethod('cod')}
++                      className={`flex flex-col items-center justify-center p-3 rounded-2xl border text-center transition-all ${
++                        paymentMethod === 'cod'
++                          ? 'border-[#7C3AED] bg-purple-50/80 ring-2 ring-purple-400/20 text-[#7C3AED]'
++                          : 'border-purple-100 hover:border-purple-200 bg-white text-slate-700'
++                      }`}
++                    >
++                      <Truck className="w-5 h-5 mb-1 text-slate-900" />
++                      <span className="text-xs font-bold">Cash on Delivery</span>
++                      <span className="text-[10px] text-slate-400 mt-0.5">Pay on arrival</span>
++                    </button>
++                  </div>
++
++                  {/* Credit Card extra inputs */}
++                  {paymentMethod === 'credit_card' && (
++                    <div className="p-3 rounded-2xl bg-purple-50/40 border border-purple-100 space-y-2.5 animate-in fade-in">
++                      <div>
++                        <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">
++                          Card Number
++                        </label>
++                        <input
++                          type="text"
++                          value={cardNumber}
++                          onChange={(e) => setCardNumber(e.target.value)}
++                          className="w-full px-3 py-1.5 text-xs rounded-xl border border-purple-200 bg-white"
++                        />
++                      </div>
++                      <div className="grid grid-cols-2 gap-2">
++                        <div>
++                          <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">
++                            Expiry (MM/YY)
++                          </label>
++                          <input
++                            type="text"
++                            value={cardExp}
++                            onChange={(e) => setCardExp(e.target.value)}
++                            className="w-full px-3 py-1.5 text-xs rounded-xl border border-purple-200 bg-white"
++                          />
++                        </div>
++                        <div>
++                          <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">
++                            CVC
++                          </label>
++                          <input
++                            type="text"
++                            value={cardCvc}
++                            onChange={(e) => setCardCvc(e.target.value)}
++                            className="w-full px-3 py-1.5 text-xs rounded-xl border border-purple-200 bg-white"
++                          />
++                        </div>
++                      </div>
++                    </div>
++                  )}
++                </div>
++              </div>
++
++              {/* Right Column: Order Summary & Place Order */}
++              <div className="lg:col-span-5 flex flex-col justify-between p-5 rounded-2xl bg-purple-50/40 border border-purple-100">
++                <div>
++                  <h4 className="text-sm font-bold text-slate-900 mb-3">Order Summary</h4>
++
++                  {/* Items mini list */}
++                  <div className="max-h-48 overflow-y-auto space-y-2.5 pr-1 mb-4">
++                    {items.map((item) => (
++                      <div key={item.id} className="flex items-center justify-between text-xs">
++                        <div className="flex flex-col min-w-0 pr-2">
++                          <span className="font-bold text-slate-800 truncate">{item.name}</span>
++                          <span className="text-[11px] text-slate-500">
++                            Qty: {item.quantity} • {item.chassisColor.name}
++                          </span>
++                        </div>
++                        <span className="font-bold text-slate-900 shrink-0">
++                          {formatCurrency(item.price * item.quantity)}
++                        </span>
++                      </div>
++                    ))}
++                  </div>
++
++                  {/* Calculations */}
++                  <div className="space-y-1.5 pt-3 border-t border-purple-200/60 text-xs">
++                    <div className="flex items-center justify-between text-slate-600">
++                      <span>Subtotal</span>
++                      <span className="font-semibold">{formatCurrency(totals.subtotal)}</span>
++                    </div>
++
++                    {totals.discount > 0 && (
++                      <div className="flex items-center justify-between text-emerald-600 font-medium">
++                        <span>Discount ({appliedCoupon})</span>
++                        <span>-{formatCurrency(totals.discount)}</span>
++                      </div>
++                    )}
++
++                    <div className="flex items-center justify-between text-slate-600">
++                      <span>Shipping</span>
++                      <span>
++                        {totals.isFreeShipping ? (
++                          <span className="font-bold text-emerald-600 uppercase text-[11px]">FREE</span>
++                        ) : (
++                          formatCurrency(totals.shippingFee)
++                        )}
++                      </span>
++                    </div>
++
++                    <div className="flex items-center justify-between text-slate-600">
++                      <span>Estimated Tax (8%)</span>
++                      <span>{formatCurrency(totals.estimatedTax)}</span>
++                    </div>
++
++                    <div className="flex items-center justify-between pt-2 border-t border-purple-200 text-sm font-black text-slate-900">
++                      <span>Total</span>
++                      <span className="text-lg text-[#7C3AED] font-black">
++                        {formatCurrency(totals.grandTotal)}
++                      </span>
++                    </div>
++                  </div>
++                </div>
++
++                <div className="pt-6">
++                  <Button
++                    type="submit"
++                    variant="primary"
++                    size="lg"
++                    fullWidth
++                    isLoading={isSubmitting}
++                    icon={<Lock className="w-4 h-4" />}
++                    className="shadow-lg shadow-purple-500/25"
++                  >
++                    Place Order ({formatCurrency(totals.grandTotal)})
++                  </Button>
++
++                  <div className="flex items-center justify-center gap-1.5 mt-3 text-[11px] text-slate-400 text-center">
++                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
++                    <span>Safe client-side simulation. No real charges.</span>
++                  </div>
++                </div>
++              </div>
++            </div>
++          </form>
++        )}
++
++        {/* STEP 2: Order Confirmation Screen */}
++        {currentStep === 2 && completedOrder && (
++          <div className="p-6 sm:p-8 text-center space-y-6">
++            {/* Glowing Success Icon */}
++            <div className="relative inline-flex items-center justify-center w-20 h-20 rounded-full bg-emerald-50 border-2 border-emerald-200 text-emerald-600 shadow-xl shadow-emerald-500/10">
++              <CheckCircle2 className="w-10 h-10" />
++              <span className="absolute -top-1 -right-1 flex h-4 w-4">
++                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
++                <span className="relative inline-flex rounded-full h-4 w-4 bg-emerald-500 ring-2 ring-white" />
++              </span>
++            </div>
++
++            <div>
++              <h3 className="text-2xl font-black text-slate-900">
++                Order Confirmed!
++              </h3>
++              <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto leading-relaxed">
++                Thank you, <span className="font-semibold text-slate-800">{completedOrder.customerName}</span>! Your wearable order has been successfully placed in our interactive simulation.
++              </p>
++            </div>
++
++            {/* Order Details Card */}
++            <div className="max-w-md mx-auto p-4 sm:p-5 rounded-2xl bg-purple-50/60 border border-purple-100 text-left space-y-3 text-xs">
++              <div className="flex items-center justify-between pb-2 border-b border-purple-200/60">
++                <span className="text-slate-500 font-medium">Order Reference ID:</span>
++                <span className="font-mono font-black text-slate-900 bg-white px-2 py-0.5 rounded-md border border-purple-200">
++                  {completedOrder.orderId}
++                </span>
++              </div>
++
++              <div className="flex items-center justify-between">
++                <span className="text-slate-500 font-medium">Estimated Delivery:</span>
++                <span className="font-bold text-slate-800 flex items-center gap-1.5">
++                  <Calendar className="w-3.5 h-3.5 text-[#7C3AED]" />
++                  {getEstimatedDeliveryDate(4)}
++                </span>
++              </div>
++
++              <div className="flex items-center justify-between">
++                <span className="text-slate-500 font-medium">Shipping Address:</span>
++                <span className="font-medium text-slate-800 truncate max-w-[200px]" title={completedOrder.address}>
++                  {completedOrder.address}
++                </span>
++              </div>
++
++              <div className="flex items-center justify-between">
++                <span className="text-slate-500 font-medium">Confirmation Email:</span>
++                <span className="font-medium text-slate-800">{completedOrder.email}</span>
++              </div>
++
++              <div className="flex items-center justify-between pt-2 border-t border-purple-200/60 text-sm font-bold">
++                <span className="text-slate-900">Total Paid:</span>
++                <span className="text-[#7C3AED] font-black">{formatCurrency(completedOrder.total)}</span>
++              </div>
++            </div>
++
++            {/* Back to store CTA */}
++            <div className="pt-2 max-w-xs mx-auto">
++              <Button
++                onClick={handleResetAndClose}
++                variant="primary"
++                size="md"
++                fullWidth
++                icon={<ArrowRight className="w-4 h-4" />}
++                iconPosition="right"
++              >
++                Continue Shopping
++              </Button>
++            </div>
++          </div>
++        )}
++      </div>
++    </div>
++  );
++};
+diff --git a/src/context/CartContext.tsx b/src/context/CartContext.tsx
+new file mode 100644
+index 0000000..497d2b7
+--- /dev/null
++++ b/src/context/CartContext.tsx
+@@ -0,0 +1,395 @@
++/**
++ * CartContext - Client-side Shopping Cart State & LocalStorage Persistence
++ * Manages item additions, deduplication, quantity changes, voucher discounts,
++ * totals calculations (subtotal, tax, free shipping over $100), and checkout state.
++ */
++
++import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
++import { CartItem, ColorOption, OrderDetails, ProductCategory, ProductTier, WatchFaceId } from '../types';
++import { safeStorage, STORAGE_KEYS } from '../utils/storage';
++
++export const SHIPPING_THRESHOLD = 100;
++export const STANDARD_SHIPPING_FEE = 15;
++export const TAX_RATE = 0.08; // 8% standard simulated tax
++
++export interface CouponDefinition {
++  code: string;
++  type: 'percentage' | 'fixed' | 'free_shipping';
++  value: number; // e.g. 0.10 for 10%, 50 for $50
++  description: string;
++}
++
++export const VALID_COUPONS: Record<string, CouponDefinition> = {
++  HORIZON10: {
++    code: 'HORIZON10',
++    type: 'percentage',
++    value: 0.1,
++    description: '10% off entire order',
++  },
++  SAVE20: {
++    code: 'SAVE20',
++    type: 'percentage',
++    value: 0.2,
++    description: '20% off entire order',
++  },
++  CYBER15: {
++    code: 'CYBER15',
++    type: 'percentage',
++    value: 0.15,
++    description: '15% cyber savings',
++  },
++  SMART50: {
++    code: 'SMART50',
++    type: 'fixed',
++    value: 50,
++    description: '$50 instant credit',
++  },
++  FREESHIP: {
++    code: 'FREESHIP',
++    type: 'free_shipping',
++    value: 0,
++    description: 'Free standard shipping',
++  },
++};
++
++/**
++ * Creates a deterministic composite item ID based on hardware options.
++ */
++export function generateCartItemId(
++  productId: string,
++  chassisColorId: string,
++  strapColorId: string,
++  faceId: WatchFaceId | string
++): string {
++  return `${productId}__chassis_${chassisColorId}__strap_${strapColorId}__face_${faceId}`;
++}
++
++/**
++ * Pure helper to add or increment item in cart list.
++ */
++export function addItemToCart(
++  currentItems: CartItem[],
++  itemInput: AddItemInput
++): CartItem[] {
++  const qty = itemInput.quantity && itemInput.quantity > 0 ? itemInput.quantity : 1;
++  const id =
++    itemInput.id ||
++    generateCartItemId(
++      itemInput.productId,
++      itemInput.chassisColor.id,
++      itemInput.strapColor.id,
++      itemInput.selectedFace
++    );
++
++  const existingIdx = currentItems.findIndex((it) => it.id === id);
++  if (existingIdx >= 0) {
++    const updated = [...currentItems];
++    updated[existingIdx] = {
++      ...updated[existingIdx],
++      quantity: updated[existingIdx].quantity + qty,
++    };
++    return updated;
++  }
++
++  const newItem: CartItem = {
++    id,
++    productId: itemInput.productId,
++    name: itemInput.name,
++    category: itemInput.category,
++    tier: itemInput.tier,
++    price: itemInput.price,
++    quantity: qty,
++    chassisColor: itemInput.chassisColor,
++    strapColor: itemInput.strapColor,
++    selectedFace: itemInput.selectedFace,
++  };
++  return [...currentItems, newItem];
++}
++
++/**
++ * Pure helper to remove item from cart list.
++ */
++export function removeItemFromCart(
++  currentItems: CartItem[],
++  itemId: string
++): CartItem[] {
++  return currentItems.filter((it) => it.id !== itemId);
++}
++
++/**
++ * Pure helper to update item quantity in cart list.
++ */
++export function updateItemQuantityInCart(
++  currentItems: CartItem[],
++  itemId: string,
++  quantity: number
++): CartItem[] {
++  if (quantity <= 0) {
++    return removeItemFromCart(currentItems, itemId);
++  }
++  return currentItems.map((it) =>
++    it.id === itemId ? { ...it, quantity: Math.round(quantity) } : it
++  );
++}
++
++export interface CartTotals {
++  totalItemsCount: number;
++  subtotal: number;
++  discount: number;
++  shippingFee: number;
++  estimatedTax: number;
++  grandTotal: number;
++  isFreeShipping: boolean;
++  amountToFreeShipping: number;
++}
++
++/**
++ * Pure calculation function for cart totals, discounts, shipping, and tax.
++ */
++export function calculateCartTotals(
++  items: CartItem[],
++  couponCode?: string | null
++): CartTotals {
++  const totalItemsCount = items.reduce((sum, item) => sum + item.quantity, 0);
++  const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
++
++  if (items.length === 0 || subtotal === 0) {
++    return {
++      totalItemsCount: 0,
++      subtotal: 0,
++      discount: 0,
++      shippingFee: 0,
++      estimatedTax: 0,
++      grandTotal: 0,
++      isFreeShipping: false,
++      amountToFreeShipping: SHIPPING_THRESHOLD,
++    };
++  }
++
++  // Calculate discount
++  let discount = 0;
++  let forceFreeShipping = false;
++
++  if (couponCode) {
++    const coupon = VALID_COUPONS[couponCode.trim().toUpperCase()];
++    if (coupon) {
++      if (coupon.type === 'percentage') {
++        discount = Number((subtotal * coupon.value).toFixed(2));
++      } else if (coupon.type === 'fixed') {
++        discount = Math.min(subtotal, coupon.value);
++      } else if (coupon.type === 'free_shipping') {
++        forceFreeShipping = true;
++      }
++    }
++  }
++
++  const taxableAmount = Math.max(0, subtotal - discount);
++
++  // Free shipping over $100 or with FREESHIP coupon
++  const qualifiesForFreeShipping = taxableAmount >= SHIPPING_THRESHOLD || subtotal >= SHIPPING_THRESHOLD || forceFreeShipping;
++  const shippingFee = qualifiesForFreeShipping ? 0 : STANDARD_SHIPPING_FEE;
++  const amountToFreeShipping = qualifiesForFreeShipping ? 0 : Math.max(0, SHIPPING_THRESHOLD - subtotal);
++
++  // Estimated tax (8%)
++  const estimatedTax = Number((taxableAmount * TAX_RATE).toFixed(2));
++
++  // Grand total
++  const grandTotal = Number((taxableAmount + shippingFee + estimatedTax).toFixed(2));
++
++  return {
++    totalItemsCount,
++    subtotal: Number(subtotal.toFixed(2)),
++    discount: Number(discount.toFixed(2)),
++    shippingFee,
++    estimatedTax,
++    grandTotal,
++    isFreeShipping: shippingFee === 0,
++    amountToFreeShipping: Number(amountToFreeShipping.toFixed(2)),
++  };
++}
++
++export interface AddItemInput {
++  productId: string;
++  name: string;
++  category: ProductCategory;
++  tier: ProductTier;
++  price: number;
++  chassisColor: ColorOption;
++  strapColor: ColorOption;
++  selectedFace: WatchFaceId;
++  quantity?: number;
++  id?: string;
++}
++
++export interface CartContextType {
++  items: CartItem[];
++  addItem: (item: AddItemInput) => void;
++  removeItem: (itemId: string) => void;
++  updateQuantity: (itemId: string, quantity: number) => void;
++  clearCart: () => void;
++
++  // Coupon handling
++  appliedCoupon: string | null;
++  applyCoupon: (code: string) => { success: boolean; message: string };
++  removeCoupon: () => void;
++
++  // Computed totals
++  totals: CartTotals;
++  totalItemsCount: number;
++  subtotal: number;
++  discount: number;
++  shippingFee: number;
++  estimatedTax: number;
++  grandTotal: number;
++  isFreeShipping: boolean;
++  amountToFreeShipping: number;
++
++  // UI state for drawer and checkout modal
++  isCartOpen: boolean;
++  setIsCartOpen: React.Dispatch<React.SetStateAction<boolean>>;
++  openCart: () => void;
++  closeCart: () => void;
++  isCheckoutOpen: boolean;
++  setIsCheckoutOpen: React.Dispatch<React.SetStateAction<boolean>>;
++  openCheckout: () => void;
++  closeCheckout: () => void;
++  lastOrder: OrderDetails | null;
++  setLastOrder: React.Dispatch<React.SetStateAction<OrderDetails | null>>;
++}
++
++const CartContext = createContext<CartContextType | undefined>(undefined);
++
++export interface CartProviderProps {
++  children: React.ReactNode;
++  initialItems?: CartItem[];
++  initialCoupon?: string | null;
++}
++
++export const CartProvider: React.FC<CartProviderProps> = ({
++  children,
++  initialItems,
++  initialCoupon = null,
++}) => {
++  // Initialize state from storage or passed initialItems
++  const [items, setItems] = useState<CartItem[]>(() => {
++    if (initialItems !== undefined) {
++      return initialItems;
++    }
++    return safeStorage.getItem<CartItem[]>(STORAGE_KEYS.CART, []);
++  });
++
++  const [appliedCoupon, setAppliedCoupon] = useState<string | null>(initialCoupon);
++  const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
++  const [isCheckoutOpen, setIsCheckoutOpen] = useState<boolean>(false);
++  const [lastOrder, setLastOrder] = useState<OrderDetails | null>(null);
++
++  // Synchronize items with LocalStorage
++  useEffect(() => {
++    safeStorage.setItem(STORAGE_KEYS.CART, items);
++  }, [items]);
++
++  const openCart = useCallback(() => setIsCartOpen(true), []);
++  const closeCart = useCallback(() => setIsCartOpen(false), []);
++  const openCheckout = useCallback(() => {
++    setIsCartOpen(false);
++    setIsCheckoutOpen(true);
++  }, []);
++  const closeCheckout = useCallback(() => setIsCheckoutOpen(false), []);
++
++  const addItem = useCallback((itemInput: AddItemInput) => {
++    setItems((prev) => addItemToCart(prev, itemInput));
++  }, []);
++
++  const removeItem = useCallback((itemId: string) => {
++    setItems((prev) => removeItemFromCart(prev, itemId));
++  }, []);
++
++  const updateQuantity = useCallback((itemId: string, quantity: number) => {
++    setItems((prev) => updateItemQuantityInCart(prev, itemId, quantity));
++  }, []);
++
++  const clearCart = useCallback(() => {
++    setItems([]);
++    setAppliedCoupon(null);
++    safeStorage.removeItem(STORAGE_KEYS.CART);
++  }, []);
++
++  const applyCoupon = useCallback((code: string) => {
++    const normalized = code.trim().toUpperCase();
++    if (VALID_COUPONS[normalized]) {
++      setAppliedCoupon(normalized);
++      return { success: true, message: `Coupon "${normalized}" applied successfully!` };
++    }
++    return { success: false, message: `Invalid coupon code "${code}".` };
++  }, []);
++
++  const removeCoupon = useCallback(() => {
++    setAppliedCoupon(null);
++  }, []);
++
++  // Totals
++  const totals = useMemo(
++    () => calculateCartTotals(items, appliedCoupon),
++    [items, appliedCoupon]
++  );
++
++  const value = useMemo<CartContextType>(
++    () => ({
++      items,
++      addItem,
++      removeItem,
++      updateQuantity,
++      clearCart,
++      appliedCoupon,
++      applyCoupon,
++      removeCoupon,
++      totals,
++      totalItemsCount: totals.totalItemsCount,
++      subtotal: totals.subtotal,
++      discount: totals.discount,
++      shippingFee: totals.shippingFee,
++      estimatedTax: totals.estimatedTax,
++      grandTotal: totals.grandTotal,
++      isFreeShipping: totals.isFreeShipping,
++      amountToFreeShipping: totals.amountToFreeShipping,
++      isCartOpen,
++      setIsCartOpen,
++      openCart,
++      closeCart,
++      isCheckoutOpen,
++      setIsCheckoutOpen,
++      openCheckout,
++      closeCheckout,
++      lastOrder,
++      setLastOrder,
++    }),
++    [
++      items,
++      addItem,
++      removeItem,
++      updateQuantity,
++      clearCart,
++      appliedCoupon,
++      applyCoupon,
++      removeCoupon,
++      totals,
++      isCartOpen,
++      openCart,
++      closeCart,
++      isCheckoutOpen,
++      openCheckout,
++      closeCheckout,
++      lastOrder,
++    ]
++  );
++
++  return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
++};
++
++export function useCart(): CartContextType {
++  const context = useContext(CartContext);
++  if (!context) {
++    throw new Error('useCart must be used within a CartProvider');
++  }
++  return context;
++}
+diff --git a/src/main.tsx b/src/main.tsx
+new file mode 100644
+index 0000000..0a8cbcd
+--- /dev/null
++++ b/src/main.tsx
+@@ -0,0 +1,15 @@
++import React from 'react';
++import { createRoot } from 'react-dom/client';
++import App from './App';
++import './index.css';
++
++const rootElement = document.getElementById('root');
++if (rootElement) {
++  createRoot(rootElement).render(
++    <React.StrictMode>
++      <App />
++    </React.StrictMode>
++  );
++}
++
++export default App;
+diff --git a/tasks/todo.md b/tasks/todo.md
+index 75bb2b9..4b8e25f 100644
+--- a/tasks/todo.md
++++ b/tasks/todo.md
+@@ -95,38 +95,39 @@
+ 
+ **Estimated scope:** Medium (5-6 files)
+ 
+ ---
+ 
+ ## Task T4: Client-side Cart, LocalStorage Persistence & Multi-Step Simulated Checkout
+ 
+ **Description:** Implement the client-side e-commerce shopping cart and simulated checkout experience. Create `CartContext` with `localStorage` persistence under key `antigravity_smartwatch_cart_v1`, handling item addition (with customized chassis/strap/watch face configuration), quantity adjustments, item removal, and auto-calculated subtotals, tax, and shipping. Build the slide-over cart drawer (`CartDrawer.tsx`) and the 2-step simulated checkout modal (`CheckoutModal.tsx`) with shipping form validation and instant order confirmation.
+ 
+ **Acceptance criteria:**
+-- [ ] `CartContext.tsx` implementing `addItem`, `removeItem`, `updateQuantity`, `clearCart`, and totals calculation with safe `localStorage` synchronization.
+-- [ ] Slide-out cart drawer (`CartDrawer.tsx`) showing custom item details (device name, selected chassis, strap color, face preview, price, quantity controls).
+-- [ ] Multi-step simulated checkout modal (`CheckoutModal.tsx`) with shipping input fields, simulated payment options, and order confirmation screen with order reference ID.
+-- [ ] Integration in `App.tsx` connecting Navbar, Hero 3D Studio, Catalog, Comparison, Cart Drawer, and Checkout Modal into a unified experience.
+-- [ ] Comprehensive unit tests in `tests/cart.test.ts` verifying cart operations, item deduplication, totals calculation, and `localStorage` persistence.
++- [x] `CartContext.tsx` implementing `addItem`, `removeItem`, `updateQuantity`, `clearCart`, and totals calculation with safe `localStorage` synchronization.
++- [x] Slide-out cart drawer (`CartDrawer.tsx`) showing custom item details (device name, selected chassis, strap color, face preview, price, quantity controls).
++- [x] Multi-step simulated checkout modal (`CheckoutModal.tsx`) with shipping input fields, simulated payment options, and order confirmation screen with order reference ID.
++- [x] Integration in `App.tsx` connecting Navbar, Hero 3D Studio, Catalog, Comparison, Cart Drawer, and Checkout Modal into a unified experience.
++- [x] Comprehensive unit tests in `tests/cart.test.ts` verifying cart operations, item deduplication, totals calculation, and `localStorage` persistence.
+ 
+ **Verification:**
+-- [ ] Tests pass: `npm test`
+-- [ ] Build succeeds: `npm run build`
++- [x] Tests pass: `npm test`
++- [x] Build succeeds: `npm run build`
+ 
+ **Dependencies:** Task T1, Task T2, Task T3
+ 
+ **Files likely touched:**
+ - `src/context/CartContext.tsx`
+ - `src/components/cart/CartDrawer.tsx`
+ - `src/components/cart/CartItemRow.tsx`
+ - `src/components/cart/CheckoutModal.tsx`
+ - `src/App.tsx`
+ - `tests/cart.test.ts`
+ 
+ **Estimated scope:** Medium (5-6 files)
+ 
+ ---
+ 
+ ## Checkpoint: After Tasks T1-T4 (Full Solution)
+-- [ ] All tests pass: `npm test`
+-- [ ] Production build succeeds cleanly: `npm run build`
+-- [ ] End-to-end flow verified: Browse catalog -> 360° 3D preview & face customization -> Add custom device to cart -> Checkout simulation
++- [x] All tests pass: `npm test`
++- [x] Production build succeeds cleanly: `npm run build`
++- [x] End-to-end flow verified: Browse catalog -> 360° 3D preview & face customization -> Add custom device to cart -> Checkout simulation
++
+diff --git a/tests/cart.test.ts b/tests/cart.test.ts
+new file mode 100644
+index 0000000..03051ac
+--- /dev/null
++++ b/tests/cart.test.ts
+@@ -0,0 +1,711 @@
++import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
++import React, { useEffect } from 'react';
++import { renderToString } from 'react-dom/server';
++import {
++  generateCartItemId,
++  calculateCartTotals,
++  VALID_COUPONS,
++  SHIPPING_THRESHOLD,
++  STANDARD_SHIPPING_FEE,
++  TAX_RATE,
++  CartProvider,
++  useCart,
++  CartContextType,
++} from '../src/context/CartContext';
++import { CartItem, ColorOption, OrderDetails, Product } from '../src/types';
++import { PRODUCTS } from '../src/data/products';
++import { safeStorage, STORAGE_KEYS } from '../src/utils/storage';
++
++const h = React.createElement;
++
++// Test fixtures
++const sampleProduct = PRODUCTS[0]; // PulseBand 2 ($49)
++const watchProduct = PRODUCTS[2]; // Horizon Watch SE ($179)
++const proMaxProduct = PRODUCTS[4]; // Horizon Watch Pro Max ($449)
++
++const sampleChassis1: ColorOption = sampleProduct.chassisColors[0];
++const sampleChassis2: ColorOption = sampleProduct.chassisColors[1];
++const sampleStrap1: ColorOption = sampleProduct.strapColors[0];
++const sampleStrap2: ColorOption = sampleProduct.strapColors[1];
++
++describe('Cart Calculations & Pure Logic', () => {
++  it('should generate deterministic unique composite keys', () => {
++    const key1 = generateCartItemId(sampleProduct.id, sampleChassis1.id, sampleStrap1.id, 'minimal');
++    const key2 = generateCartItemId(sampleProduct.id, sampleChassis1.id, sampleStrap1.id, 'minimal');
++    const key3 = generateCartItemId(sampleProduct.id, sampleChassis2.id, sampleStrap1.id, 'minimal');
++    const key4 = generateCartItemId(sampleProduct.id, sampleChassis1.id, sampleStrap2.id, 'minimal');
++    const key5 = generateCartItemId(sampleProduct.id, sampleChassis1.id, sampleStrap1.id, 'neon');
++
++    expect(key1).toBe(key2);
++    expect(key1).not.toBe(key3);
++    expect(key1).not.toBe(key4);
++    expect(key1).not.toBe(key5);
++    expect(key1).toContain(sampleProduct.id);
++  });
++
++  it('should return zero totals for an empty cart', () => {
++    const totals = calculateCartTotals([]);
++    expect(totals.totalItemsCount).toBe(0);
++    expect(totals.subtotal).toBe(0);
++    expect(totals.discount).toBe(0);
++    expect(totals.shippingFee).toBe(0);
++    expect(totals.estimatedTax).toBe(0);
++    expect(totals.grandTotal).toBe(0);
++    expect(totals.isFreeShipping).toBe(false);
++    expect(totals.amountToFreeShipping).toBe(SHIPPING_THRESHOLD);
++  });
++
++  it('should calculate subtotal, shipping fee, and tax for orders under $100', () => {
++    const item: CartItem = {
++      id: generateCartItemId(sampleProduct.id, sampleChassis1.id, sampleStrap1.id, 'minimal'),
++      productId: sampleProduct.id,
++      name: sampleProduct.name,
++      category: sampleProduct.category,
++      tier: sampleProduct.tier,
++      price: 49,
++      quantity: 1,
++      chassisColor: sampleChassis1,
++      strapColor: sampleStrap1,
++      selectedFace: 'minimal',
++    };
++
++    const totals = calculateCartTotals([item]);
++    expect(totals.totalItemsCount).toBe(1);
++    expect(totals.subtotal).toBe(49);
++    expect(totals.isFreeShipping).toBe(false);
++    expect(totals.shippingFee).toBe(STANDARD_SHIPPING_FEE);
++    expect(totals.amountToFreeShipping).toBe(51);
++
++    // Tax is 8% of $49 = $3.92
++    const expectedTax = Number((49 * TAX_RATE).toFixed(2));
++    expect(totals.estimatedTax).toBe(expectedTax);
++
++    // Grand total = 49 + 15 + 3.92 = 67.92
++    expect(totals.grandTotal).toBe(Number((49 + STANDARD_SHIPPING_FEE + expectedTax).toFixed(2)));
++  });
++
++  it('should provide free shipping when subtotal exceeds or equals $100', () => {
++    const item: CartItem = {
++      id: generateCartItemId(watchProduct.id, watchProduct.chassisColors[0].id, watchProduct.strapColors[0].id, 'minimal'),
++      productId: watchProduct.id,
++      name: watchProduct.name,
++      category: watchProduct.category,
++      tier: watchProduct.tier,
++      price: 179,
++      quantity: 1,
++      chassisColor: watchProduct.chassisColors[0],
++      strapColor: watchProduct.strapColors[0],
++      selectedFace: 'minimal',
++    };
++
++    const totals = calculateCartTotals([item]);
++    expect(totals.subtotal).toBe(179);
++    expect(totals.isFreeShipping).toBe(true);
++    expect(totals.shippingFee).toBe(0);
++    expect(totals.amountToFreeShipping).toBe(0);
++
++    const expectedTax = Number((179 * TAX_RATE).toFixed(2));
++    expect(totals.estimatedTax).toBe(expectedTax);
++    expect(totals.grandTotal).toBe(Number((179 + expectedTax).toFixed(2)));
++  });
++
++  it('should apply percentage coupon discounts correctly', () => {
++    const item: CartItem = {
++      id: 'item-1',
++      productId: watchProduct.id,
++      name: watchProduct.name,
++      category: watchProduct.category,
++      tier: watchProduct.tier,
++      price: 200,
++      quantity: 1,
++      chassisColor: watchProduct.chassisColors[0],
++      strapColor: watchProduct.strapColors[0],
++      selectedFace: 'minimal',
++    };
++
++    // HORIZON10 = 10% discount
++    const totals10 = calculateCartTotals([item], 'HORIZON10');
++    expect(totals10.subtotal).toBe(200);
++    expect(totals10.discount).toBe(20);
++    // Tax is 8% of (200 - 20) = 8% of 180 = 14.40
++    expect(totals10.estimatedTax).toBe(14.4);
++    expect(totals10.grandTotal).toBe(194.4);
++
++    // SAVE20 = 20% discount
++    const totals20 = calculateCartTotals([item], 'SAVE20');
++    expect(totals20.discount).toBe(40);
++    // Tax is 8% of 160 = 12.80
++    expect(totals20.estimatedTax).toBe(12.8);
++    expect(totals20.grandTotal).toBe(172.8);
++  });
++
++  it('should apply fixed amount discount coupon (SMART50)', () => {
++    const item: CartItem = {
++      id: 'item-1',
++      productId: sampleProduct.id,
++      name: sampleProduct.name,
++      category: sampleProduct.category,
++      tier: sampleProduct.tier,
++      price: 150,
++      quantity: 1,
++      chassisColor: sampleChassis1,
++      strapColor: sampleStrap1,
++      selectedFace: 'minimal',
++    };
++
++    const totals = calculateCartTotals([item], 'SMART50');
++    expect(totals.subtotal).toBe(150);
++    expect(totals.discount).toBe(50);
++    // Tax is 8% of (150 - 50 = 100) = 8.00
++    expect(totals.estimatedTax).toBe(8);
++    expect(totals.grandTotal).toBe(108);
++  });
++
++  it('should apply FREESHIP coupon to waive shipping on orders under $100', () => {
++    const item: CartItem = {
++      id: 'item-1',
++      productId: sampleProduct.id,
++      name: sampleProduct.name,
++      category: sampleProduct.category,
++      tier: sampleProduct.tier,
++      price: 49,
++      quantity: 1,
++      chassisColor: sampleChassis1,
++      strapColor: sampleStrap1,
++      selectedFace: 'minimal',
++    };
++
++    const totals = calculateCartTotals([item], 'FREESHIP');
++    expect(totals.subtotal).toBe(49);
++    expect(totals.shippingFee).toBe(0);
++    expect(totals.isFreeShipping).toBe(true);
++  });
++
++  it('should ignore invalid coupon codes gracefully', () => {
++    const item: CartItem = {
++      id: 'item-1',
++      productId: sampleProduct.id,
++      name: sampleProduct.name,
++      category: sampleProduct.category,
++      tier: sampleProduct.tier,
++      price: 50,
++      quantity: 1,
++      chassisColor: sampleChassis1,
++      strapColor: sampleStrap1,
++      selectedFace: 'minimal',
++    };
++
++    const totals = calculateCartTotals([item], 'INVALID_CODE_123');
++    expect(totals.discount).toBe(0);
++  });
++});
++
++describe('Cart State Operations & Deduplication', () => {
++  it('should add a new customized item with quantity 1 if not specified', async () => {
++    const { addItemToCart } = await import('../src/context/CartContext');
++    const initialItems: CartItem[] = [];
++
++    const items = addItemToCart(initialItems, {
++      productId: sampleProduct.id,
++      name: sampleProduct.name,
++      category: sampleProduct.category,
++      tier: sampleProduct.tier,
++      price: sampleProduct.price,
++      chassisColor: sampleChassis1,
++      strapColor: sampleStrap1,
++      selectedFace: 'minimal',
++    });
++
++    expect(items.length).toBe(1);
++    expect(items[0].quantity).toBe(1);
++    expect(items[0].productId).toBe(sampleProduct.id);
++    expect(items[0].chassisColor.id).toBe(sampleChassis1.id);
++    expect(items[0].strapColor.id).toBe(sampleStrap1.id);
++    expect(items[0].selectedFace).toBe('minimal');
++  });
++
++  it('should deduplicate and increment quantity when exact same configuration is added', async () => {
++    const { addItemToCart } = await import('../src/context/CartContext');
++    let items: CartItem[] = [];
++
++    // Add first time
++    items = addItemToCart(items, {
++      productId: sampleProduct.id,
++      name: sampleProduct.name,
++      category: sampleProduct.category,
++      tier: sampleProduct.tier,
++      price: sampleProduct.price,
++      chassisColor: sampleChassis1,
++      strapColor: sampleStrap1,
++      selectedFace: 'minimal',
++      quantity: 1,
++    });
++
++    // Add exact same configuration with quantity 2
++    items = addItemToCart(items, {
++      productId: sampleProduct.id,
++      name: sampleProduct.name,
++      category: sampleProduct.category,
++      tier: sampleProduct.tier,
++      price: sampleProduct.price,
++      chassisColor: sampleChassis1,
++      strapColor: sampleStrap1,
++      selectedFace: 'minimal',
++      quantity: 2,
++    });
++
++    expect(items.length).toBe(1);
++    expect(items[0].quantity).toBe(3);
++  });
++
++  it('should create separate line items when chassis, strap, or watch face differ', async () => {
++    const { addItemToCart } = await import('../src/context/CartContext');
++    let items: CartItem[] = [];
++
++    // Base item: Chassis 1, Strap 1, Minimal face
++    items = addItemToCart(items, {
++      productId: sampleProduct.id,
++      name: sampleProduct.name,
++      category: sampleProduct.category,
++      tier: sampleProduct.tier,
++      price: sampleProduct.price,
++      chassisColor: sampleChassis1,
++      strapColor: sampleStrap1,
++      selectedFace: 'minimal',
++    });
++
++    // Different strap
++    items = addItemToCart(items, {
++      productId: sampleProduct.id,
++      name: sampleProduct.name,
++      category: sampleProduct.category,
++      tier: sampleProduct.tier,
++      price: sampleProduct.price,
++      chassisColor: sampleChassis1,
++      strapColor: sampleStrap2,
++      selectedFace: 'minimal',
++    });
++
++    // Different chassis
++    items = addItemToCart(items, {
++      productId: sampleProduct.id,
++      name: sampleProduct.name,
++      category: sampleProduct.category,
++      tier: sampleProduct.tier,
++      price: sampleProduct.price,
++      chassisColor: sampleChassis2,
++      strapColor: sampleStrap1,
++      selectedFace: 'minimal',
++    });
++
++    // Different watch face
++    items = addItemToCart(items, {
++      productId: sampleProduct.id,
++      name: sampleProduct.name,
++      category: sampleProduct.category,
++      tier: sampleProduct.tier,
++      price: sampleProduct.price,
++      chassisColor: sampleChassis1,
++      strapColor: sampleStrap1,
++      selectedFace: 'neon',
++    });
++
++    expect(items.length).toBe(4);
++    expect(items[0].strapColor.id).toBe(sampleStrap1.id);
++    expect(items[1].strapColor.id).toBe(sampleStrap2.id);
++    expect(items[2].chassisColor.id).toBe(sampleChassis2.id);
++    expect(items[3].selectedFace).toBe('neon');
++  });
++
++  it('should update item quantity accurately', async () => {
++    const { addItemToCart, updateItemQuantityInCart } = await import('../src/context/CartContext');
++    const items = addItemToCart([], {
++      productId: sampleProduct.id,
++      name: sampleProduct.name,
++      category: sampleProduct.category,
++      tier: sampleProduct.tier,
++      price: sampleProduct.price,
++      chassisColor: sampleChassis1,
++      strapColor: sampleStrap1,
++      selectedFace: 'minimal',
++      quantity: 1,
++    });
++
++    const itemId = items[0].id;
++    const updated = updateItemQuantityInCart(items, itemId, 5);
++    expect(updated[0].quantity).toBe(5);
++  });
++
++  it('should remove item when quantity is updated to zero or negative', async () => {
++    const { addItemToCart, updateItemQuantityInCart } = await import('../src/context/CartContext');
++    const items = addItemToCart([], {
++      productId: sampleProduct.id,
++      name: sampleProduct.name,
++      category: sampleProduct.category,
++      tier: sampleProduct.tier,
++      price: sampleProduct.price,
++      chassisColor: sampleChassis1,
++      strapColor: sampleStrap1,
++      selectedFace: 'minimal',
++      quantity: 2,
++    });
++
++    const itemId = items[0].id;
++    const updatedZero = updateItemQuantityInCart(items, itemId, 0);
++    expect(updatedZero.length).toBe(0);
++
++    const updatedNegative = updateItemQuantityInCart(items, itemId, -3);
++    expect(updatedNegative.length).toBe(0);
++  });
++
++  it('should remove item by ID', async () => {
++    const { addItemToCart, removeItemFromCart } = await import('../src/context/CartContext');
++    let items = addItemToCart([], {
++      productId: sampleProduct.id,
++      name: sampleProduct.name,
++      category: sampleProduct.category,
++      tier: sampleProduct.tier,
++      price: sampleProduct.price,
++      chassisColor: sampleChassis1,
++      strapColor: sampleStrap1,
++      selectedFace: 'minimal',
++    });
++
++    items = addItemToCart(items, {
++      productId: watchProduct.id,
++      name: watchProduct.name,
++      category: watchProduct.category,
++      tier: watchProduct.tier,
++      price: watchProduct.price,
++      chassisColor: watchProduct.chassisColors[0],
++      strapColor: watchProduct.strapColors[0],
++      selectedFace: 'chrono',
++    });
++
++    expect(items.length).toBe(2);
++    const toRemoveId = items[0].id;
++
++    const remaining = removeItemFromCart(items, toRemoveId);
++    expect(remaining.length).toBe(1);
++    expect(remaining[0].productId).toBe(watchProduct.id);
++  });
++});
++
++describe('LocalStorage Synchronization', () => {
++  beforeEach(() => {
++    safeStorage.clear();
++  });
++
++  afterEach(() => {
++    safeStorage.clear();
++  });
++
++  it('should persist and retrieve cart items using safeStorage under antigravity_smartwatch_cart_v1', () => {
++    expect(STORAGE_KEYS.CART).toBe('antigravity_smartwatch_cart_v1');
++
++    const sampleItem: CartItem = {
++      id: generateCartItemId(sampleProduct.id, sampleChassis1.id, sampleStrap1.id, 'minimal'),
++      productId: sampleProduct.id,
++      name: sampleProduct.name,
++      category: sampleProduct.category,
++      tier: sampleProduct.tier,
++      price: sampleProduct.price,
++      quantity: 2,
++      chassisColor: sampleChassis1,
++      strapColor: sampleStrap1,
++      selectedFace: 'minimal',
++    };
++
++    // Save
++    safeStorage.setItem(STORAGE_KEYS.CART, [sampleItem]);
++
++    // Retrieve
++    const retrieved = safeStorage.getItem<CartItem[]>(STORAGE_KEYS.CART, []);
++    expect(retrieved.length).toBe(1);
++    expect(retrieved[0].id).toBe(sampleItem.id);
++    expect(retrieved[0].quantity).toBe(2);
++
++    // Remove
++    safeStorage.removeItem(STORAGE_KEYS.CART);
++    const afterRemoval = safeStorage.getItem<CartItem[]>(STORAGE_KEYS.CART, []);
++    expect(afterRemoval).toEqual([]);
++  });
++});
++
++describe('Cart UI Component: CartItemRow', () => {
++  it('should render item name, price, swatches, and quantity controls', async () => {
++    const { CartItemRow } = await import('../src/components/cart/CartItemRow');
++
++    const sampleItem: CartItem = {
++      id: 'test-item-1',
++      productId: sampleProduct.id,
++      name: 'PulseBand 2',
++      category: 'band',
++      tier: 'standard',
++      price: 49,
++      quantity: 2,
++      chassisColor: sampleChassis1,
++      strapColor: sampleStrap1,
++      selectedFace: 'minimal',
++    };
++
++    const onUpdateQuantity = vi.fn();
++    const onRemove = vi.fn();
++
++    const html = renderToString(
++      h(CartItemRow, {
++        item: sampleItem,
++        onUpdateQuantity,
++        onRemove,
++      })
++    );
++
++    expect(html).toContain('PulseBand 2');
++    expect(html).toContain('$49'); // Unit price
++    expect(html).toContain('$98'); // Total line item price 49 * 2
++    expect(html).toContain('2'); // Quantity
++    expect(html).toContain(sampleChassis1.name); // Chassis swatch name
++    expect(html).toContain(sampleStrap1.name); // Strap swatch name
++    expect(html).toContain('Minimal'); // Watch face
++  });
++});
++
++describe('Cart UI Component: CartDrawer', () => {
++  it('should render empty cart state when no items are present', async () => {
++    const { CartDrawer } = await import('../src/components/cart/CartDrawer');
++
++    const html = renderToString(
++      h(CartDrawer, {
++        isOpen: true,
++        onClose: vi.fn(),
++        items: [],
++      })
++    );
++
++    expect(html).toContain('Shopping Cart');
++    expect(html).toContain('empty');
++    expect(html).toContain('Explore');
++  });
++
++  it('should render items, free shipping progress, totals, and checkout button when items exist', async () => {
++    const { CartDrawer } = await import('../src/components/cart/CartDrawer');
++
++    const sampleItem: CartItem = {
++      id: 'test-item-1',
++      productId: watchProduct.id,
++      name: watchProduct.name,
++      category: watchProduct.category,
++      tier: watchProduct.tier,
++      price: 179,
++      quantity: 1,
++      chassisColor: watchProduct.chassisColors[0],
++      strapColor: watchProduct.strapColors[0],
++      selectedFace: 'minimal',
++    };
++
++    const html = renderToString(
++      h(CartDrawer, {
++        isOpen: true,
++        onClose: vi.fn(),
++        items: [sampleItem],
++        onCheckout: vi.fn(),
++      })
++    );
++
++    expect(html).toContain('Horizon Watch SE');
++    expect(html).toContain('$179');
++    expect(html).toContain('Free'); // Free shipping unlocked because 179 >= 100
++    expect(html).toContain('Proceed to Checkout');
++  });
++});
++
++describe('Checkout Component: CheckoutModal', () => {
++  it('should render step 1 with shipping inputs, payment options, and order summary', async () => {
++    const { CheckoutModal } = await import('../src/components/cart/CheckoutModal');
++
++    const sampleItem: CartItem = {
++      id: 'test-item-1',
++      productId: sampleProduct.id,
++      name: sampleProduct.name,
++      category: sampleProduct.category,
++      tier: sampleProduct.tier,
++      price: sampleProduct.price,
++      quantity: 1,
++      chassisColor: sampleChassis1,
++      strapColor: sampleStrap1,
++      selectedFace: 'minimal',
++    };
++
++    const html = renderToString(
++      h(CheckoutModal, {
++        isOpen: true,
++        onClose: vi.fn(),
++        items: [sampleItem],
++        step: 1,
++      })
++    );
++
++    expect(html).toContain('Simulated Checkout');
++    expect(html).toContain('Full Name');
++    expect(html).toContain('Email');
++    expect(html).toContain('Street Address');
++    expect(html).toContain('Apple Pay');
++    expect(html).toContain('Credit Card');
++    expect(html).toContain('Cash on Delivery');
++  });
++
++  it('should render step 2 with order confirmation, unique order ID, and delivery estimate', async () => {
++    const { CheckoutModal } = await import('../src/components/cart/CheckoutModal');
++
++    const sampleOrder: OrderDetails = {
++      orderId: 'ORD-2026-98765',
++      customerName: 'Alex Rivera',
++      email: 'alex.rivera@example.com',
++      address: '742 Evergreen Terrace, Springfield, OR',
++      items: [
++        {
++          id: 'test-item-1',
++          productId: sampleProduct.id,
++          name: sampleProduct.name,
++          category: sampleProduct.category,
++          tier: sampleProduct.tier,
++          price: sampleProduct.price,
++          quantity: 1,
++          chassisColor: sampleChassis1,
++          strapColor: sampleStrap1,
++          selectedFace: 'minimal',
++        },
++      ],
++      subtotal: 49,
++      shipping: 15,
++      discount: 0,
++      total: 67.92,
++      createdAt: '2026-10-22T12:00:00.000Z',
++    };
++
++    const html = renderToString(
++      h(CheckoutModal, {
++        isOpen: true,
++        onClose: vi.fn(),
++        items: [],
++        step: 2,
++        completedOrder: sampleOrder,
++      })
++    );
++
++    expect(html).toContain('Order Confirmed');
++    expect(html).toContain('ORD-2026-98765');
++    expect(html).toContain('Alex Rivera');
++    expect(html).toContain('alex.rivera@example.com');
++    expect(html).toContain('Estimated Delivery');
++    expect(html).toContain('Continue Shopping');
++  });
++});
++
++describe('Full Application: App Orchestration', () => {
++  it('should render App with Navbar, Hero 3D Studio, Customizer Bar, Catalog, and Footer', async () => {
++    const { App } = await import('../src/App');
++
++    const html = renderToString(h(App, null));
++
++    expect(html).toContain('HORIZON');
++    expect(html).toContain('3D Studio');
++    expect(html).toContain('Add Customized to Cart');
++    expect(html).toContain('Hardware Catalog');
++    expect(html).toContain('Explore All Models');
++    expect(html).toContain('All rights reserved');
++  });
++});
++
++describe('Cart Context & Helper Edge Cases', () => {
++  it('should throw error when useCart is used outside CartProvider', async () => {
++    const { useCart } = await import('../src/context/CartContext');
++
++    const Consumer = () => {
++      useCart();
++      return null;
++    };
++
++    expect(() => renderToString(h(Consumer, null))).toThrow(
++      'useCart must be used within a CartProvider'
++    );
++  });
++
++  it('should generate valid order ID format with year and prefix', async () => {
++    const { generateOrderId } = await import('../src/components/cart/CheckoutModal');
++    const orderId = generateOrderId();
++    const currentYear = new Date().getFullYear();
++
++    expect(orderId).toMatch(new RegExp(`^ORD-${currentYear}-\\d{5}$`));
++  });
++
++  it('should compute future estimated delivery date correctly', async () => {
++    const { getEstimatedDeliveryDate } = await import('../src/components/cart/CheckoutModal');
++    const delivery = getEstimatedDeliveryDate(5);
++    expect(typeof delivery).toBe('string');
++    expect(delivery.length).toBeGreaterThan(0);
++  });
++
++  it('should render CartDrawer with active coupon badge and free shipping badge', async () => {
++    const { CartDrawer } = await import('../src/components/cart/CartDrawer');
++
++    const sampleItem: CartItem = {
++      id: 'test-item-coupon',
++      productId: watchProduct.id,
++      name: watchProduct.name,
++      category: watchProduct.category,
++      tier: watchProduct.tier,
++      price: 200,
++      quantity: 1,
++      chassisColor: watchProduct.chassisColors[0],
++      strapColor: watchProduct.strapColors[0],
++      selectedFace: 'minimal',
++    };
++
++    const html = renderToString(
++      h(CartDrawer, {
++        isOpen: true,
++        items: [sampleItem],
++        appliedCoupon: 'HORIZON10',
++      })
++    );
++
++    expect(html).toContain('HORIZON10');
++    expect(html).toContain('Discount (HORIZON10)');
++    expect(html).toContain('-$20');
++    expect(html).toContain('Free Shipping Unlocked');
++  });
++
++  it('should render CartDrawer under $100 with shipping fee and amount to free shipping message', async () => {
++    const { CartDrawer } = await import('../src/components/cart/CartDrawer');
++
++    const sampleItem: CartItem = {
++      id: 'test-item-cheap',
++      productId: sampleProduct.id,
++      name: sampleProduct.name,
++      category: sampleProduct.category,
++      tier: sampleProduct.tier,
++      price: 49,
++      quantity: 1,
++      chassisColor: sampleChassis1,
++      strapColor: sampleStrap1,
++      selectedFace: 'minimal',
++    };
++
++    const html = renderToString(
++      h(CartDrawer, {
++        isOpen: true,
++        items: [sampleItem],
++      })
++    );
++
++    expect(html).toContain('Add $51 for Free Shipping');
++    expect(html).toContain('$15'); // Standard shipping fee
++  });
++});
++
++
++
++
++
++
