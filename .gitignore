@@ -1,0 +1,4 @@
+node_modules/
+docs/agent-skills/tasks/
+.DS_Store
+dist/
