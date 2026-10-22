@@ -102,15 +102,15 @@
 **Description:** Implement the client-side e-commerce shopping cart and simulated checkout experience. Create `CartContext` with `localStorage` persistence under key `antigravity_smartwatch_cart_v1`, handling item addition (with customized chassis/strap/watch face configuration), quantity adjustments, item removal, and auto-calculated subtotals, tax, and shipping. Build the slide-over cart drawer (`CartDrawer.tsx`) and the 2-step simulated checkout modal (`CheckoutModal.tsx`) with shipping form validation and instant order confirmation.
 
 **Acceptance criteria:**
-- [ ] `CartContext.tsx` implementing `addItem`, `removeItem`, `updateQuantity`, `clearCart`, and totals calculation with safe `localStorage` synchronization.
-- [ ] Slide-out cart drawer (`CartDrawer.tsx`) showing custom item details (device name, selected chassis, strap color, face preview, price, quantity controls).
-- [ ] Multi-step simulated checkout modal (`CheckoutModal.tsx`) with shipping input fields, simulated payment options, and order confirmation screen with order reference ID.
-- [ ] Integration in `App.tsx` connecting Navbar, Hero 3D Studio, Catalog, Comparison, Cart Drawer, and Checkout Modal into a unified experience.
-- [ ] Comprehensive unit tests in `tests/cart.test.ts` verifying cart operations, item deduplication, totals calculation, and `localStorage` persistence.
+- [x] `CartContext.tsx` implementing `addItem`, `removeItem`, `updateQuantity`, `clearCart`, and totals calculation with safe `localStorage` synchronization.
+- [x] Slide-out cart drawer (`CartDrawer.tsx`) showing custom item details (device name, selected chassis, strap color, face preview, price, quantity controls).
+- [x] Multi-step simulated checkout modal (`CheckoutModal.tsx`) with shipping input fields, simulated payment options, and order confirmation screen with order reference ID.
+- [x] Integration in `App.tsx` connecting Navbar, Hero 3D Studio, Catalog, Comparison, Cart Drawer, and Checkout Modal into a unified experience.
+- [x] Comprehensive unit tests in `tests/cart.test.ts` verifying cart operations, item deduplication, totals calculation, and `localStorage` persistence.
 
 **Verification:**
-- [ ] Tests pass: `npm test`
-- [ ] Build succeeds: `npm run build`
+- [x] Tests pass: `npm test`
+- [x] Build succeeds: `npm run build`
 
 **Dependencies:** Task T1, Task T2, Task T3
 
@@ -127,6 +127,7 @@
 ---
 
 ## Checkpoint: After Tasks T1-T4 (Full Solution)
-- [ ] All tests pass: `npm test`
-- [ ] Production build succeeds cleanly: `npm run build`
-- [ ] End-to-end flow verified: Browse catalog -> 360° 3D preview & face customization -> Add custom device to cart -> Checkout simulation
+- [x] All tests pass: `npm test`
+- [x] Production build succeeds cleanly: `npm run build`
+- [x] End-to-end flow verified: Browse catalog -> 360° 3D preview & face customization -> Add custom device to cart -> Checkout simulation
+
