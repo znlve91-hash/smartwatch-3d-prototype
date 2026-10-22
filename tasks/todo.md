@@ -109,16 +109,16 @@
 **Description:** Build the persistent shopping cart state management (`useCart` hook) with localStorage storage (`aura_cart_v1`), slide-over Cart Drawer with item quantity modification and removal, promo code discount calculation (`AURA10`, `LAUNCH20`), and a multi-step simulated checkout modal with receipt confirmation.
 
 **Acceptance criteria:**
-- [ ] `src/utils/storage.ts` provides safe localStorage wrapper with error recovery and fallback handling.
-- [ ] `src/hooks/useCart.ts` handles cart item additions (preserving custom color & watch face selections), quantity changes, removals, subtotal, tax, and discount code evaluations.
-- [ ] `src/components/cart/CartDrawer.tsx` renders slide-over cart panel with items list, line total calculations, empty state, and "Proceed to Checkout" CTA.
-- [ ] `src/components/cart/CheckoutModal.tsx` implements multi-step simulated checkout (Shipping Info -> Simulated Payment -> Order Confirmation with tracking ID) and clears cart on completion.
-- [ ] `tests/cart.test.ts` validates cart additions, item deduplication/variant keys, quantity updates, removal, discount code math, and storage persistence.
+- [x] `src/utils/storage.ts` provides safe localStorage wrapper with error recovery and fallback handling.
+- [x] `src/hooks/useCart.ts` handles cart item additions (preserving custom color & watch face selections), quantity changes, removals, subtotal, tax, and discount code evaluations.
+- [x] `src/components/cart/CartDrawer.tsx` renders slide-over cart panel with items list, line total calculations, empty state, and "Proceed to Checkout" CTA.
+- [x] `src/components/cart/CheckoutModal.tsx` implements multi-step simulated checkout (Shipping Info -> Simulated Payment -> Order Confirmation with tracking ID) and clears cart on completion.
+- [x] `tests/cart.test.ts` validates cart additions, item deduplication/variant keys, quantity updates, removal, discount code math, and storage persistence.
 
 **Verification:**
-- [ ] Tests pass: `npm test tests/cart.test.ts`
-- [ ] Full test suite passes: `npm test`
-- [ ] Build succeeds: `npm run build`
+- [x] Tests pass: `npm test tests/cart.test.ts`
+- [x] Full test suite passes: `npm test`
+- [x] Build succeeds: `npm run build`
 
 **Dependencies:** Task T1, Task T2, Task T3
 
@@ -136,7 +136,7 @@
 ---
 
 ## Checkpoint: Final Integration & Readiness (After Tasks T1-T4)
-- [ ] All 4 tasks completed and verified
-- [ ] `npm test` passes with 100% success rate across all test files
-- [ ] `npm run build` builds cleanly with 0 TypeScript/Vite errors
-- [ ] Complete user flow operates end-to-end: Explore -> 360 3D Studio -> Customize Face & Color -> Test Widgets -> Add to Cart -> Simulated Checkout with Confirmation
+- [x] All 4 tasks completed and verified
+- [x] `npm test` passes with 100% success rate across all test files
+- [x] `npm run build` builds cleanly with 0 TypeScript/Vite errors
+- [x] Complete user flow operates end-to-end: Explore -> 360 3D Studio -> Customize Face & Color -> Test Widgets -> Add to Cart -> Simulated Checkout with Confirmation
